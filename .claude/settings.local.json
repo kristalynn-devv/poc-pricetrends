@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk grep *)",
+      "Bash(rtk curl *)",
+      "Read(//tmp/**)",
+      "mcp__claude_ai_Nimble__nimble_map",
+      "mcp__claude_ai_Nimble__nimble_extract",
+      "Bash(node -e ' *)",
+      "PowerShell(Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force)"
+    ]
+  }
+}

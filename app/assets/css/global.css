@@ -1,0 +1,6 @@
+html,
+body,
+.v-application,
+.v-application * {
+  font-family: 'Noto Sans Thai', 'Noto Sans', sans-serif !important;
+}
