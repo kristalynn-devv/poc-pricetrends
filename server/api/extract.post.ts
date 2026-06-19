@@ -2,19 +2,20 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 
 /** Fields per category ID */
 const CATEGORY_FIELDS: Record<string, string[]> = {
-  '103': ['brand', 'model', 'price', 'condition', 'dialColor', 'caseMaterial', 'strapMaterial', 'movementType'],
-  '106': ['title', 'model', 'price', 'material', 'moldType', 'year', 'weight'],
-  '107': ['itemType', 'brand', 'model', 'price', 'capacity', 'condition'],
-  '108': ['itemType', 'brand', 'model', 'price', 'year', 'condition'],
-  '109': ['itemType', 'brand', 'model', 'price', 'condition'],
-  '110': ['itemType', 'brand', 'model', 'price', 'year', 'condition'],
-  '111': ['itemType', 'brand', 'model', 'price', 'condition'],
-  '112': ['itemType', 'brand', 'model', 'price', 'condition'],
+  '103': ['brand', 'model', 'price', 'currency', 'condition', 'dialColor', 'caseMaterial', 'strapMaterial', 'movementType'],
+  '106': ['title', 'model', 'price', 'currency', 'material', 'moldType', 'year', 'weight'],
+  '107': ['itemType', 'brand', 'model', 'price', 'currency', 'capacity', 'condition'],
+  '108': ['itemType', 'brand', 'model', 'price', 'currency', 'year', 'condition'],
+  '109': ['itemType', 'brand', 'model', 'price', 'currency', 'condition'],
+  '110': ['itemType', 'brand', 'model', 'price', 'currency', 'year', 'condition'],
+  '111': ['itemType', 'brand', 'model', 'price', 'currency', 'condition'],
+  '112': ['itemType', 'brand', 'model', 'price', 'currency', 'condition'],
 }
 
 const FIELD_DESCRIPTIONS: Record<string, string> = {
   title: 'ชื่อสินค้า',
-  price: 'ราคา (ตัวเลขบาท ไม่มีจุลภาค) | null',
+  price: 'ตัวเลขราคา (ไม่มีจุลภาค ไม่มีสัญลักษณ์สกุลเงิน) | null',
+  currency: 'สกุลเงิน เช่น THB, USD, JPY, EUR | null',
   condition: '"new" | "used" | "unknown" | null',
   brand: 'แบรนด์ เช่น Rolex, Apple',
   model: 'รุ่น เช่น Datejust 41, iPhone 15 Pro',
@@ -67,7 +68,7 @@ ${schemaText}
 }`
 
   const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
 
   const result = await model.generateContent([
     prompt,

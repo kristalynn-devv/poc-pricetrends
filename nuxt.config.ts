@@ -33,7 +33,7 @@ export default defineNuxtConfig({
     },
   },
   runtimeConfig: {
-    geminiApiKey: process.env.GEMINI_API_KEY ?? '',
+    geminiApiKey: '',
   },
   devServer: { port: 3000 },
-})
+});

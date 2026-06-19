@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-PoC price extraction tool — user points at a Thai secondary-market webpage, the app takes a silent Playwright screenshot, then sends it to Gemini 2.0 Flash to extract structured product data according to a per-category template.
+PoC price extraction tool — user points at a Thai secondary-market webpage, the app takes a silent Playwright screenshot, then sends it to Gemini to extract structured product data according to a per-category template.
 
 Single Nuxt 4 app: frontend (Vuetify 3) + backend (Nitro server routes) in one project. No Python.
 
@@ -23,26 +23,40 @@ pnpm preview
 
 **Workflow:**
 1. User enters a URL + selects category (or uploads an image manually)
-2. `POST /api/screenshot` — Playwright headless opens the URL, returns a base64 JPEG
-3. `POST /api/extract` — sends base64 image to Gemini 2.0 Flash with a category-specific schema prompt; returns JSON array of extracted product items
+2. กด "ถ่ายรูป" → `POST /api/analyze` — Playwright ถ่าย + Gemini extract ในครั้งเดียว บันทึกภาพอัตโนมัติ
+3. ผลลัพธ์แสดงใน UI ทันที (ไม่ต้องกดปุ่มแยก)
 
 **Server routes:**
-- `server/api/screenshot.post.ts` — Playwright headless screenshot → `{ base64, mimeType }`
-- `server/api/extract.post.ts` — Gemini vision extraction → `{ items[] }` per CATEGORY_FIELDS schema
+- `server/api/analyze.post.ts` — **main endpoint**: screenshot + extract + save ในครั้งเดียว → `{ filename, base64, mimeType, items[] }`
+- `server/api/screenshot.post.ts` — standalone screenshot → `{ base64, mimeType, filename }`
+- `server/api/extract.post.ts` — standalone Gemini extraction → `{ items[] }`
 
-**Category field templates** (defined in `extract.post.ts`):
-- 103 นาฬิกา: brand, model, price, condition, dialColor, caseMaterial, strapMaterial, movementType
-- 106 พระ/วัตถุมงคล: title, model, price, material, moldType, year, weight
-- 107/109/112 IT/โน้ตบุ๊ก/มือถือ: itemType, brand, model, price, capacity, condition
-- 108/110 แบรนเนม/แว่นตา: itemType, brand, model, price, year, condition
-- 111 เครื่องมือช่าง: itemType, brand, model, price, condition
+**Screenshot config:**
+- Viewport: 1920×1080
+- Anti-bot: `--disable-blink-features=AutomationControlled` + real user-agent + `navigator.webdriver = undefined`
+- Cookie popup: auto-dismiss (`Accept all`, `Agree`, `OK` ใน dialog)
+- `waitUntil: 'load'` + 3s wait (ไม่ใช้ `networkidle` — timeout บนเว็บที่มี background requests)
+- Mouse move to (0,0) ก่อนถ่ายเพื่อหลีก hover zoom effect
 
-User can also define a fully custom template in the UI (field name + description pairs).
+**File naming convention:** `[YYYYMMDD]_[CategoryID]_[SourceCode].jpg`
+- บันทึกที่ `output/screenshots/`
+- Source codes: `CHR`=chrono24, `SHP`=shopee, `LAZ`=lazada, `KAI`=kaidee, `FBK`=facebook, `MRC`=mercari, `EBY`=ebay, `YAH`=yahoo — domain อื่นใช้ 3 ตัวแรกของ domain อัตโนมัติ
 
-**Credentials**: `GEMINI_API_KEY` in `.env` (never committed). Read via `useRuntimeConfig()` in server routes (`runtimeConfig.geminiApiKey` in `nuxt.config.ts`).
+**Gemini model:** `gemini-3.1-flash-lite`
+
+**Category field templates** (defined in `analyze.post.ts` และ `extract.post.ts`):
+- 103 นาฬิกา: brand, model, price, currency, condition, dialColor, caseMaterial, strapMaterial, movementType
+- 106 พระ/วัตถุมงคล: title, model, price, currency, material, moldType, year, weight
+- 107/109/112 IT/โน้ตบุ๊ก/มือถือ: itemType, brand, model, price, currency, capacity, condition
+- 108/110 แบรนเนม/แว่นตา: itemType, brand, model, price, currency, year, condition
+- 111 เครื่องมือช่าง: itemType, brand, model, price, currency, condition
+
+`price` = ตัวเลขเท่านั้น, `currency` = สกุลเงิน (THB/USD/JPY/EUR) แยกกัน
+
+**Credentials**: `NUXT_GEMINI_API_KEY` ใน `.env` (ไม่ใช่ `GEMINI_API_KEY`) — Nuxt runtimeConfig map จาก prefix `NUXT_` เท่านั้น
 
 ## Known gaps
 
-- Screenshot route opens a fresh Playwright browser per request (slow ~3–5s); no pooling yet.
+- Screenshot route เปิด browser ใหม่ทุก request (~3–5s); no pooling yet.
+- Cloudflare bot protection บางเว็บยังผ่านไม่ได้ (ได้หน้า "Verifying..." แทน) — ต้องใช้ stealth plugin เพิ่มเติม
 - No result persistence — extracted data lives only in the browser until downloaded as JSON.
-- Gemini may fail to parse tightly packed listing pages; prompt tuning per site may be needed.
