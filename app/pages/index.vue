@@ -1,16 +1,21 @@
 <template>
-  <v-container class="py-8" max-width="960">
+  <v-container class="py-8" max-width="1200">
     <v-row class="mb-6">
       <v-col>
         <h1 class="text-h4 font-weight-bold">Price Extractor</h1>
         <p class="text-body-2 text-medium-emphasis mt-1">ถ่ายรูปเว็บ → AI ดึงข้อมูลสินค้า</p>
       </v-col>
+      <v-col cols="auto">
+        <v-btn variant="text" prepend-icon="mdi-table-eye" to="/entries" size="small">รายการข้อมูล</v-btn>
+        <v-btn variant="text" prepend-icon="mdi-text-box-outline" to="/logs" size="small">System Logs</v-btn>
+      </v-col>
     </v-row>
 
-    <!-- ── Tab: Single URL vs Chrono24 Search ── -->
+    <!-- ── Tab: Single URL vs Chrono24 ── -->
     <v-tabs v-model="activeTab" class="mb-4">
       <v-tab value="single">Single URL</v-tab>
-      <v-tab value="chrono24">Chrono24 Search</v-tab>
+      <v-tab value="chrono24">Chrono24</v-tab>
+      <v-tab value="auctionhouse">AuctionHouse</v-tab>
     </v-tabs>
 
     <!-- ══════════════ TAB: Single URL ══════════════ -->
@@ -18,7 +23,7 @@
       <v-card class="mb-4" rounded="lg">
         <v-card-text>
           <v-row dense>
-            <v-col cols="12" md="7">
+            <v-col cols="12" md="8">
               <v-text-field
                 v-model="url"
                 label="URL หน้าเว็บ"
@@ -29,7 +34,7 @@
                 hide-details
               />
             </v-col>
-            <v-col cols="12" md="3">
+            <v-col cols="12" md="2">
               <v-select
                 v-model="categoryId"
                 :items="categories"
@@ -187,51 +192,35 @@
       <!-- Error -->
       <v-alert v-if="searchError" type="error" class="mb-4" closable @click:close="searchError = ''">{{ searchError }}</v-alert>
 
-      <!-- Per-item progress -->
-      <v-card class="mb-4" rounded="lg" v-if="searchResults.length > 0 || searchLoading">
-        <v-card-title class="py-3 px-4 d-flex align-center">
-          <v-icon class="mr-2">mdi-list-status</v-icon>
-          สถานะ{{ searchLoading ? ' (กำลังประมวลผล...)' : '' }}
+      <!-- Terminal log -->
+      <v-card class="mb-4" rounded="lg" v-if="searchLogs.length > 0 || searchLoading">
+        <v-card-title class="py-2 px-4 d-flex align-center" style="background:#1e1e1e; border-radius: 8px 8px 0 0">
+          <v-icon class="mr-2" color="green" size="small">mdi-console</v-icon>
+          <span class="text-body-2" style="color:#ccc; font-family:monospace">
+            สถานะ{{ searchLoading ? ' — กำลังประมวลผล...' : ' — เสร็จสิ้น' }}
+          </span>
           <v-spacer />
-          <span v-if="searchSummary" class="text-body-2 text-medium-emphasis">
-            screenshot {{ searchSummary.screenshotOk }}/{{ searchSummary.total }} •
-            extract {{ searchSummary.extractOk }}/{{ searchSummary.total }}
+          <span v-if="searchSummary" class="text-caption" style="color:#888; font-family:monospace">
+            screenshot {{ searchSummary.screenshotOk }}/{{ searchSummary.total }} · extract {{ searchSummary.extractOk }}/{{ searchSummary.total }}
           </span>
         </v-card-title>
-        <v-divider />
-        <v-list density="compact">
-          <v-list-item
-            v-for="r in searchResults"
-            :key="r.index"
-            :subtitle="r.url"
+        <div
+          ref="searchTerminalEl"
+          class="terminal-box"
+        >
+          <div v-if="searchLoading && searchLogs.length === 0" style="color:#666">รอการตอบสนอง...</div>
+          <div
+            v-for="(line, i) in searchLogs.slice(-15)"
+            :key="i"
+            :style="{ color: logColor(line.level), lineHeight: '1.7' }"
           >
-            <template #prepend>
-              <v-icon
-                :color="r.error ? 'error' : r.extractOk ? 'success' : r.screenshotOk ? 'warning' : 'grey'"
-                class="mr-2"
-              >
-                {{
-                  r.error && !r.screenshotOk ? 'mdi-close-circle' :
-                  r.extractOk ? 'mdi-check-circle' :
-                  r.screenshotOk ? 'mdi-camera-outline' :
-                  'mdi-circle-outline'
-                }}
-              </v-icon>
-            </template>
-            <template #title>
-              <span class="text-body-2 font-weight-medium">
-                #{{ r.index + 1 }}
-                <span v-if="r.filename" class="text-medium-emphasis ml-1">{{ r.filename }}</span>
-              </span>
-            </template>
-            <template #append>
-              <v-chip v-if="r.items.length > 0" size="x-small" color="success" class="mr-1">
-                {{ r.items.length }} item{{ r.items.length > 1 ? 's' : '' }}
-              </v-chip>
-              <v-chip v-if="r.error" size="x-small" color="error">error</v-chip>
-            </template>
-          </v-list-item>
-        </v-list>
+            <span style="color:#555">{{ formatLogTime(line.ts) }}</span>
+            <span :style="{ color: logLevelColor(line.level), marginLeft:'6px', marginRight:'6px' }">[{{ line.level.toUpperCase() }}]</span>
+            <span>{{ line.msg }}</span>
+            <span v-if="line.data" style="color:#666; margin-left:6px">{{ JSON.stringify(line.data) }}</span>
+          </div>
+          <div v-if="searchLoading" style="color:#4ec9b0">█</div>
+        </div>
       </v-card>
 
       <!-- Combined results table -->
@@ -265,12 +254,147 @@
       </v-card>
       <ImageLightbox v-model="lightboxOpen" :src="lightboxSrc" />
     </template>
+
+    <!-- ══════════════ TAB: AuctionHouse ══════════════ -->
+    <template v-if="activeTab === 'auctionhouse'">
+      <v-card class="mb-4" rounded="lg">
+        <v-card-text>
+          <v-row dense align="center">
+            <v-col cols="12" md="6">
+              <v-text-field
+                v-model="ahQuery"
+                label="ค้นหาบน AuctionHouse"
+                placeholder="เช่น Rolex Daytona"
+                prepend-inner-icon="mdi-magnify"
+                variant="outlined"
+                density="compact"
+                hide-details
+                @keyup.enter="runAhSearch"
+              />
+            </v-col>
+            <v-col cols="6" md="2">
+              <v-select
+                v-model="ahCategoryId"
+                :items="categories"
+                item-title="label"
+                item-value="id"
+                label="หมวด"
+                variant="outlined"
+                density="compact"
+                hide-details
+              />
+            </v-col>
+            <v-col cols="6" md="2">
+              <v-select
+                v-model="ahLimit"
+                :items="[3, 5, 10]"
+                label="จำนวน"
+                variant="outlined"
+                density="compact"
+                hide-details
+              />
+            </v-col>
+            <v-col cols="12" md="2" class="d-flex align-center">
+              <v-btn
+                color="primary"
+                block
+                :loading="ahLoading"
+                :disabled="!ahQuery.trim()"
+                @click="runAhSearch"
+              >
+                <v-icon start>mdi-magnify</v-icon>
+                ค้นหา
+              </v-btn>
+            </v-col>
+          </v-row>
+        </v-card-text>
+      </v-card>
+
+      <v-alert v-if="ahError" type="error" class="mb-4" closable @click:close="ahError = ''">{{ ahError }}</v-alert>
+
+      <!-- Bot-blocked fallback: show search page screenshot -->
+      <v-card class="mb-4" rounded="lg" v-if="ahSearchPageScreenshot">
+        <v-card-title class="py-3 px-4 text-body-1 text-warning">
+          <v-icon class="mr-2" color="warning">mdi-shield-alert</v-icon>
+          Bot protection — ภาพหน้า search
+        </v-card-title>
+        <v-divider />
+        <v-img
+          :src="`data:image/jpeg;base64,${ahSearchPageScreenshot}`"
+          max-height="400"
+          contain
+          class="bg-grey-lighten-4"
+        />
+      </v-card>
+
+      <!-- Terminal log -->
+      <v-card class="mb-4" rounded="lg" v-if="ahLogs.length > 0 || ahLoading">
+        <v-card-title class="py-2 px-4 d-flex align-center" style="background:#1e1e1e; border-radius: 8px 8px 0 0">
+          <v-icon class="mr-2" color="green" size="small">mdi-console</v-icon>
+          <span class="text-body-2" style="color:#ccc; font-family:monospace">
+            สถานะ{{ ahLoading ? ' — กำลังประมวลผล...' : ' — เสร็จสิ้น' }}
+          </span>
+          <v-spacer />
+          <span v-if="ahSummary" class="text-caption" style="color:#888; font-family:monospace">
+            screenshot {{ ahSummary.screenshotOk }}/{{ ahSummary.total }} · extract {{ ahSummary.extractOk }}/{{ ahSummary.total }}
+          </span>
+        </v-card-title>
+        <div
+          ref="ahTerminalEl"
+          class="terminal-box"
+        >
+          <div v-if="ahLoading && ahLogs.length === 0" style="color:#666">รอการตอบสนอง...</div>
+          <div
+            v-for="(line, i) in ahLogs.slice(-15)"
+            :key="i"
+            :style="{ color: logColor(line.level), lineHeight: '1.7' }"
+          >
+            <span style="color:#555">{{ formatLogTime(line.ts) }}</span>
+            <span :style="{ color: logLevelColor(line.level), marginLeft:'6px', marginRight:'6px' }">[{{ line.level.toUpperCase() }}]</span>
+            <span>{{ line.msg }}</span>
+            <span v-if="line.data" style="color:#666; margin-left:6px">{{ JSON.stringify(line.data) }}</span>
+          </div>
+          <div v-if="ahLoading" style="color:#4ec9b0">█</div>
+        </div>
+      </v-card>
+
+      <!-- Combined results table -->
+      <v-card rounded="lg" v-if="ahAllItems.length > 0">
+        <v-card-title class="py-3 px-4 d-flex align-center">
+          <v-icon class="mr-2">mdi-table</v-icon>
+          ผลลัพธ์รวม ({{ ahAllItems.length }} รายการ)
+          <v-spacer />
+          <v-btn size="small" variant="tonal" prepend-icon="mdi-download" @click="downloadJson(ahAllItemsForExport)">JSON</v-btn>
+        </v-card-title>
+        <v-divider />
+        <v-data-table
+          :headers="ahTableHeaders"
+          :items="ahAllItems"
+          density="compact"
+          class="text-body-2"
+        >
+          <template #[`item._screenshot`]="{ item }">
+            <v-img
+              v-if="item._screenshot"
+              :src="`data:image/jpeg;base64,${item._screenshot}`"
+              width="120"
+              height="80"
+              cover
+              class="my-1 rounded cursor-pointer"
+              @click="lightboxSrc = `data:image/jpeg;base64,${item._screenshot}`; lightboxOpen = true"
+            />
+            <span v-else class="text-medium-emphasis text-caption">—</span>
+          </template>
+        </v-data-table>
+      </v-card>
+      <ImageLightbox v-model="lightboxOpen" :src="lightboxSrc" />
+    </template>
   </v-container>
 </template>
 
 <script setup lang="ts">
 // ── Shared ────────────────────────────────────────────────────────────────────
-const activeTab = ref<'single' | 'chrono24'>('single')
+const activeTab = useState<'single' | 'chrono24' | 'auctionhouse'>('idx-activeTab', () => 'single')
 const lightboxOpen = ref(false)
 const lightboxSrc = ref('')
 
@@ -299,17 +423,17 @@ function downloadJson(data: unknown) {
 }
 
 // ── Single URL ─────────────────────────────────────────────────────────────────
-const url = ref('')
-const categoryId = ref('103')
-const screenshot = ref('')
-const screenshotMime = ref('image/jpeg')
+const url = useState('idx-url', () => '')
+const categoryId = useState('idx-categoryId', () => '103')
+const screenshot = useState('idx-screenshot', () => '')
+const screenshotMime = useState('idx-screenshotMime', () => 'image/jpeg')
 const screenshotLoading = ref(false)
 const extractLoading = ref(false)
-const error = ref('')
-const items = ref<Record<string, unknown>[]>([])
+const error = useState('idx-error', () => '')
+const items = useState<Record<string, unknown>[]>('idx-items', () => [])
 const fileInput = ref<HTMLInputElement>()
-const useCustomTemplate = ref(false)
-const customFields = ref<{ key: string; desc: string }[]>([
+const useCustomTemplate = useState('idx-useCustomTemplate', () => false)
+const customFields = useState<{ key: string; desc: string }[]>('idx-customFields', () => [
   { key: 'title', desc: 'ชื่อสินค้า' },
   { key: 'price', desc: 'ราคา (ตัวเลขบาท) | null' },
   { key: 'condition', desc: '"new" | "used" | "unknown" | null' },
@@ -380,21 +504,32 @@ interface ItemResult {
   error?: string
 }
 
-interface SearchResponse {
-  query: string
-  summary: { total: number; screenshotOk: number; extractOk: number }
-  results: ItemResult[]
-  logs: { ts: string; level: string; msg: string; data?: unknown }[]
-  error?: string
+
+const searchQuery = useState('idx-searchQuery', () => '')
+const searchCategoryId = useState('idx-searchCategoryId', () => '103')
+const searchLimit = useState('idx-searchLimit', () => 5)
+const searchLoading = ref(false)
+const searchError = useState('idx-searchError', () => '')
+const searchResults = useState<ItemResult[]>('idx-searchResults', () => [])
+const searchSummary = useState<{ total: number; screenshotOk: number; extractOk: number } | null>('idx-searchSummary', () => null)
+const searchLogs = useState<{ ts: string; level: string; msg: string; data?: unknown }[]>('idx-searchLogs', () => [])
+const searchTerminalEl = ref<HTMLElement>()
+
+function scrollTerminal(el?: HTMLElement) {
+  nextTick(() => { if (el) el.scrollTop = el.scrollHeight })
 }
 
-const searchQuery = ref('')
-const searchCategoryId = ref('103')
-const searchLimit = ref(5)
-const searchLoading = ref(false)
-const searchError = ref('')
-const searchResults = ref<ItemResult[]>([])
-const searchSummary = ref<{ total: number; screenshotOk: number; extractOk: number } | null>(null)
+function formatLogTime(ts: string) {
+  try { return new Date(ts).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) } catch { return ts }
+}
+
+function logColor(level: string) {
+  return level === 'error' ? '#f48771' : level === 'warn' ? '#dcdcaa' : '#d4d4d4'
+}
+
+function logLevelColor(level: string) {
+  return level === 'error' ? '#f44747' : level === 'warn' ? '#ce9178' : '#4ec9b0'
+}
 
 // Each row includes _screenshot (base64) for table display and _source for reference
 const allExtractedItems = computed(() =>
@@ -418,29 +553,147 @@ const searchTableHeaders = computed(() => {
   ]
 })
 
+// ── AuctionHouse Search ───────────────────────────────────────────────────────
+
+const ahQuery = useState('idx-ahQuery', () => '')
+const ahCategoryId = useState('idx-ahCategoryId', () => '103')
+const ahLimit = useState('idx-ahLimit', () => 5)
+const ahLoading = ref(false)
+const ahError = useState('idx-ahError', () => '')
+const ahResults = useState<ItemResult[]>('idx-ahResults', () => [])
+const ahSummary = useState<{ total: number; screenshotOk: number; extractOk: number } | null>('idx-ahSummary', () => null)
+const ahSearchPageScreenshot = useState('idx-ahSearchPageScreenshot', () => '')
+const ahLogs = useState<{ ts: string; level: string; msg: string; data?: unknown }[]>('idx-ahLogs', () => [])
+const ahTerminalEl = ref<HTMLElement>()
+
+const ahAllItems = computed(() =>
+  ahResults.value.flatMap((r) =>
+    r.items.map((item) => ({ _screenshot: r.base64 ?? '', _source: r.filename ?? r.url, ...(item as Record<string, unknown>) }))
+  )
+)
+const ahAllItemsForExport = computed(() =>
+  ahAllItems.value.map(({ _screenshot: _s, ...rest }) => rest)
+)
+const ahTableHeaders = computed(() => {
+  if (ahAllItems.value.length === 0) return []
+  const dataKeys = Object.keys(ahAllItems.value[0]).filter((k) => k !== '_screenshot' && k !== '_source')
+  return [
+    { title: 'รูป', key: '_screenshot', sortable: false, width: 136 },
+    ...dataKeys.map((k) => ({ title: k, key: k, sortable: true })),
+    { title: 'ไฟล์', key: '_source', sortable: false },
+  ]
+})
+
+async function runAhSearch() {
+  if (!ahQuery.value.trim()) return
+  ahLoading.value = true
+  ahError.value = ''
+  ahResults.value = []
+  ahSummary.value = null
+  ahSearchPageScreenshot.value = ''
+  ahLogs.value = []
+  try {
+    const res = await fetch('/api/auctionhouse-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: ahQuery.value.trim(), categoryId: ahCategoryId.value, limit: ahLimit.value }),
+      signal: AbortSignal.timeout(300_000),
+    })
+    if (!res.body) throw new Error('No response stream')
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.trim()) continue
+        try {
+          const ev = JSON.parse(line)
+          if (ev.type === 'log') { ahLogs.value.push(ev); scrollTerminal(ahTerminalEl.value) }
+          else if (ev.type === 'result') ahResults.value.push(ev)
+          else if (ev.type === 'searchpage') ahSearchPageScreenshot.value = ev.base64
+          else if (ev.type === 'done') { ahSummary.value = ev.summary; if (ev.error) ahError.value = ev.error }
+        } catch { }
+      }
+    }
+  } catch (e: unknown) {
+    ahError.value = (e as Error).message ?? 'ค้นหาไม่สำเร็จ'
+  } finally {
+    ahLoading.value = false
+    scrollTerminal(ahTerminalEl.value)
+  }
+}
+
 async function runSearch() {
   if (!searchQuery.value.trim()) return
   searchLoading.value = true
   searchError.value = ''
   searchResults.value = []
   searchSummary.value = null
+  searchLogs.value = []
   try {
-    const res = await $fetch<SearchResponse>('/api/chrono24-search', {
+    const res = await fetch('/api/chrono24-search', {
       method: 'POST',
-      body: {
-        query: searchQuery.value.trim(),
-        categoryId: searchCategoryId.value,
-        limit: searchLimit.value,
-      },
-      timeout: 300_000, // 5 min — batch can take a while
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: searchQuery.value.trim(), categoryId: searchCategoryId.value, limit: searchLimit.value }),
+      signal: AbortSignal.timeout(300_000),
     })
-    searchResults.value = res.results
-    searchSummary.value = res.summary
-    if (res.error) searchError.value = res.error
+    if (!res.body) throw new Error('No response stream')
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.trim()) continue
+        try {
+          const ev = JSON.parse(line)
+          if (ev.type === 'log') { searchLogs.value.push(ev); scrollTerminal(searchTerminalEl.value) }
+          else if (ev.type === 'result') searchResults.value.push(ev)
+          else if (ev.type === 'done') { searchSummary.value = ev.summary; if (ev.error) searchError.value = ev.error }
+        } catch { }
+      }
+    }
   } catch (e: unknown) {
     searchError.value = (e as Error).message ?? 'ค้นหาไม่สำเร็จ'
   } finally {
     searchLoading.value = false
+    scrollTerminal(searchTerminalEl.value)
   }
 }
 </script>
+
+<style scoped>
+.terminal-box {
+  background: #1e1e1e;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 12px 16px;
+  height: 260px;
+  overflow-y: auto;
+  border-radius: 0 0 8px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #555 #2d2d2d;
+}
+.terminal-box::-webkit-scrollbar {
+  width: 6px;
+}
+.terminal-box::-webkit-scrollbar-track {
+  background: #2d2d2d;
+}
+.terminal-box::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 3px;
+}
+.terminal-box::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}
+</style>

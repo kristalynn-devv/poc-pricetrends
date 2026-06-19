@@ -1,0 +1,28 @@
+{
+  "date": "20260619",
+  "total": 6,
+  "success": 6,
+  "failed": 0,
+  "totalItemsExtracted": 5,
+  "avgDurationMs": 7239,
+  "errors": [],
+  "bySource": {
+    "kaidee.com": {
+      "total": 1,
+      "success": 1,
+      "failed": 0
+    },
+    "chrono24.com": {
+      "total": 5,
+      "success": 5,
+      "failed": 0
+    }
+  },
+  "byCategory": {
+    "103": {
+      "total": 6,
+      "success": 6,
+      "itemsExtracted": 5
+    }
+  }
+}

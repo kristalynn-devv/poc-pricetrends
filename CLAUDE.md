@@ -28,8 +28,11 @@ pnpm preview
 
 **Server routes:**
 - `server/api/analyze.post.ts` — **main endpoint**: screenshot + extract + save ในครั้งเดียว → `{ filename, base64, mimeType, items[] }`
+- `server/api/chrono24-search.post.ts` — Chrono24 batch search: scrapes listing page → ถ่ายแต่ละรายการ + Gemini extract
 - `server/api/screenshot.post.ts` — standalone screenshot → `{ base64, mimeType, filename }`
 - `server/api/extract.post.ts` — standalone Gemini extraction → `{ items[] }`
+- `GET /api/logs/entries?date=YYYYMMDD` — raw JSONL log entries for a given day
+- `GET /api/logs/summary?date=YYYYMMDD` — daily summary (total/success/failed, bySource, byCategory, avgDuration)
 
 **Screenshot config:**
 - Viewport: 1920×1080
@@ -54,6 +57,12 @@ pnpm preview
 `price` = ตัวเลขเท่านั้น, `currency` = สกุลเงิน (THB/USD/JPY/EUR) แยกกัน
 
 **Credentials**: `NUXT_GEMINI_API_KEY` ใน `.env` (ไม่ใช่ `GEMINI_API_KEY`) — Nuxt runtimeConfig map จาก prefix `NUXT_` เท่านั้น
+
+**Logging system** (`server/utils/logger.ts`):
+- ทุก request (analyze + chrono24-search) append `LogEntry` ไปที่ `output/logs/YYYYMMDD.jsonl`
+- Fields: `timestamp`, `source`, `url`, `categoryId`, `searchQuery?`, `durationMs`, `httpStatus`, `screenshotFile`, `itemsExtracted`, `error`, `errorType`
+- `errorType`: `timeout` | `screenshot` | `extraction` | `parse` | `config`
+- UI ดู log ได้ที่ `/logs` (`app/pages/logs.vue`) — กรองตามวัน แสดง summary + error list
 
 ## Known gaps
 

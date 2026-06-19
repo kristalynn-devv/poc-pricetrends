@@ -1,7 +1,16 @@
 import { chromium } from 'playwright'
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { writeFile, mkdir } from 'node:fs/promises'
+import { writeFile, mkdir, appendFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { appendLog, extractDomain } from '../utils/logger'
+import type { LogEntry } from '../utils/logger'
+
+async function saveResult(entry: { timestamp: string; source: string; url: string; categoryId: string | null; screenshotFile: string; items: unknown[] }) {
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const dir = join(process.cwd(), 'output', 'results')
+  await mkdir(dir, { recursive: true })
+  await appendFile(join(dir, `${dateStr}.jsonl`), JSON.stringify(entry) + '\n', 'utf8')
+}
 
 const SOURCE_CODES: Record<string, string> = {
   'chrono24.com': 'CHR',
@@ -16,6 +25,7 @@ const SOURCE_CODES: Record<string, string> = {
   'ebay.com': 'EBY',
   'yahoo.co.jp': 'YAH',
   'mercari.com': 'MRC',
+  'auctionhouse.co.th': 'AUC',
 }
 
 function sourceCode(url: string): string {
@@ -76,7 +86,19 @@ export default defineEventHandler(async (event) => {
 
   const config = useRuntimeConfig()
   const apiKey = config.geminiApiKey
-  if (!apiKey) throw createError({ statusCode: 500, message: 'GEMINI_API_KEY not configured' })
+  if (!apiKey) {
+    const logEntry: LogEntry = {
+      timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
+      durationMs: 0, httpStatus: 500, screenshotFile: null,
+      itemsExtracted: null, error: 'GEMINI_API_KEY not configured', errorType: 'config',
+    }
+    await appendLog(logEntry).catch(() => {})
+    throw createError({ statusCode: 500, message: 'GEMINI_API_KEY not configured' })
+  }
+
+  const startedAt = Date.now()
+  const filename = buildFilename(url, categoryId)
+  const mimeType = 'image/jpeg'
 
   // --- Screenshot ---
   const browser = await chromium.launch({
@@ -84,8 +106,6 @@ export default defineEventHandler(async (event) => {
     args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-setuid-sandbox'],
   })
   let base64: string
-  const mimeType = 'image/jpeg'
-  const filename = buildFilename(url, categoryId)
 
   try {
     const context = await browser.newContext({
@@ -98,7 +118,19 @@ export default defineEventHandler(async (event) => {
     })
     const page = await context.newPage()
     await page.setViewportSize({ width: 1920, height: 1080 })
-    await page.goto(url, { waitUntil: 'load', timeout: 30000 })
+    try {
+      await page.goto(url, { waitUntil: 'load', timeout: 30000 })
+    } catch (err: any) {
+      const isTimeout = err?.message?.includes('timeout') || err?.name === 'TimeoutError'
+      await appendLog({
+        timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
+        durationMs: Date.now() - startedAt, httpStatus: 504, screenshotFile: null,
+        itemsExtracted: null,
+        error: err?.message ?? 'Page load failed',
+        errorType: isTimeout ? 'timeout' : 'screenshot',
+      }).catch(() => {})
+      throw createError({ statusCode: 504, message: isTimeout ? 'Page load timed out' : 'Page load failed' })
+    }
     await page.waitForTimeout(3000)
     for (const selector of [
       'dialog button:has-text("OK")', '[role="dialog"] button:has-text("OK")',
@@ -121,6 +153,16 @@ export default defineEventHandler(async (event) => {
     const screenshotDir = join(process.cwd(), 'output', 'screenshots')
     await mkdir(screenshotDir, { recursive: true })
     await writeFile(join(screenshotDir, filename), buffer)
+  } catch (err: any) {
+    if (!err?.statusCode) {
+      await appendLog({
+        timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
+        durationMs: Date.now() - startedAt, httpStatus: 500, screenshotFile: null,
+        itemsExtracted: null, error: err?.message ?? 'Screenshot failed', errorType: 'screenshot',
+      }).catch(() => {})
+      throw createError({ statusCode: 500, message: 'Screenshot failed' })
+    }
+    throw err
   } finally {
     await browser.close()
   }
@@ -146,16 +188,44 @@ ${schemaText}
 
   const genAI = new GoogleGenerativeAI(apiKey)
   const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
-  const result = await model.generateContent([
-    prompt,
-    { inlineData: { data: base64, mimeType } },
-  ])
 
-  const text = result.response.text().trim()
+  let text: string
+  try {
+    const result = await model.generateContent([
+      prompt,
+      { inlineData: { data: base64, mimeType } },
+    ])
+    text = result.response.text().trim()
+  } catch (err: any) {
+    await appendLog({
+      timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
+      durationMs: Date.now() - startedAt, httpStatus: 502, screenshotFile: filename,
+      itemsExtracted: null, error: err?.message ?? 'Gemini extraction failed', errorType: 'extraction',
+    }).catch(() => {})
+    throw createError({ statusCode: 502, message: 'Gemini extraction failed' })
+  }
+
   try {
     const items = JSON.parse(text)
+    const ts = new Date().toISOString()
+    const src = extractDomain(url)
+    await Promise.all([
+      appendLog({
+        timestamp: ts, source: src, url, categoryId: categoryId ?? null,
+        durationMs: Date.now() - startedAt, httpStatus: 200, screenshotFile: filename,
+        itemsExtracted: Array.isArray(items) ? items.length : 0, error: null, errorType: null,
+      }).catch(() => {}),
+      Array.isArray(items) && items.length > 0
+        ? saveResult({ timestamp: ts, source: src, url, categoryId: categoryId ?? null, screenshotFile: filename, items }).catch((e: any) => console.error('[saveResult]', e))
+        : Promise.resolve(),
+    ])
     return { filename, base64, mimeType, items }
   } catch {
+    await appendLog({
+      timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
+      durationMs: Date.now() - startedAt, httpStatus: 200, screenshotFile: filename,
+      itemsExtracted: 0, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse',
+    }).catch(() => {})
     return { filename, base64, mimeType, items: [], raw: text }
   }
 })

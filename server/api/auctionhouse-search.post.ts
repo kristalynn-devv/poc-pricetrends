@@ -16,49 +16,66 @@ interface ItemResult {
   error?: string
 }
 
-const CHRONO24_BASE = 'https://www.chrono24.com'
+const AH_BASE = 'https://www.auctionhouse.co.th'
 
 const LISTING_LINK_SELECTORS = [
-  'article a[href*="--id"]',
-  '[data-article-id] a',
-  '.article-item a',
-  'a[href*=".htm"][href*="chrono24.com"]',
+  'a.product-item-link',
+  '.product-item-name a',
+  '.product-item-info a.product-item-photo',
+  '.products-grid a[href$=".html"]',
+  '.search-result-container a[href$=".html"]',
+  'li.product-item a[href*="auctionhouse.co.th"]',
 ]
 
 const CATEGORY_FIELDS: Record<string, string[]> = {
   '103': ['brand', 'model', 'price', 'currency', 'condition', 'dialColor', 'caseMaterial', 'strapMaterial', 'movementType'],
+  '106': ['title', 'model', 'price', 'currency', 'material', 'moldType', 'year', 'weight'],
+  '107': ['itemType', 'brand', 'model', 'price', 'currency', 'capacity', 'condition'],
+  '108': ['itemType', 'brand', 'model', 'price', 'currency', 'year', 'condition'],
+  '109': ['itemType', 'brand', 'model', 'price', 'currency', 'capacity', 'condition'],
+  '110': ['itemType', 'brand', 'model', 'price', 'currency', 'year', 'condition'],
+  '111': ['itemType', 'brand', 'model', 'price', 'currency', 'condition'],
+  '112': ['itemType', 'brand', 'model', 'price', 'currency', 'capacity', 'condition'],
 }
 
 const FIELD_DESCRIPTIONS: Record<string, string> = {
   price: 'ตัวเลขราคา (ไม่มีจุลภาค ไม่มีสัญลักษณ์สกุลเงิน) | null',
   currency: 'สกุลเงิน เช่น THB, USD, JPY, EUR | null',
   condition: '"new" | "used" | "unknown" | null',
-  brand: 'แบรนด์ เช่น Rolex, Apple',
-  model: 'รุ่น เช่น Datejust 41, Submariner',
+  brand: 'แบรนด์ เช่น Rolex, AP, Patek Philippe',
+  model: 'รุ่น เช่น Daytona, Submariner, Nautilus',
   dialColor: 'สีหน้าปัดนาฬิกา',
   caseMaterial: 'วัสดุตัวเรือนนาฬิกา',
   strapMaterial: 'วัสดุสายนาฬิกา',
   movementType: 'ประเภทเครื่อง เช่น Automatic, Quartz',
+  itemType: 'ประเภทสินค้า',
+  title: 'ชื่อสินค้า',
+  material: 'วัสดุ',
+  moldType: 'พิมพ์',
+  year: 'ปี',
+  weight: 'น้ำหนัก',
+  capacity: 'ความจุ/ขนาด',
 }
 
 const DISMISS_SELECTORS = [
   'dialog button:has-text("OK")', '[role="dialog"] button:has-text("OK")',
   'button:has-text("Accept all")', 'button:has-text("Accept All")',
   'button:has-text("Agree")', 'button:has-text("Accept")',
+  'button:has-text("ยอมรับ")', '.modal-popup .action-close',
 ]
 
-function buildFilename(index: number, url: string): string {
+function buildFilename(index: number, categoryId: string, url: string): string {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const idMatch = url.match(/--id(\d+)/)
-  const articleId = idMatch ? idMatch[1] : `pos${String(index + 1).padStart(2, '0')}`
-  return `${date}_103_CHR_${articleId}.jpg`
+  const slugMatch = url.match(/\/([^/]+)\.html/)
+  const slug = slugMatch ? slugMatch[1].slice(0, 30) : String(index + 1).padStart(2, '0')
+  return `${date}_${categoryId}_AUC_${slug}.jpg`
 }
 
-async function dismissCookieBanner(page: import('playwright').Page): Promise<void> {
+async function dismissPopups(page: import('playwright').Page): Promise<void> {
   for (const sel of DISMISS_SELECTORS) {
     try {
       const btn = page.locator(sel).first()
-      if (await btn.isVisible({ timeout: 800 })) { await btn.click({ timeout: 3000 }); await page.waitForTimeout(800); return }
+      if (await btn.isVisible({ timeout: 600 })) { await btn.click({ timeout: 2000 }); await page.waitForTimeout(500); return }
     } catch { }
   }
 }
@@ -66,8 +83,8 @@ async function dismissCookieBanner(page: import('playwright').Page): Promise<voi
 async function newStealth(browser: Browser): Promise<BrowserContext> {
   const ctx = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    locale: 'en-US',
-    extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
+    locale: 'th-TH',
+    extraHTTPHeaders: { 'Accept-Language': 'th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7' },
     viewport: { width: 1920, height: 1080 },
   })
   await ctx.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }) })
@@ -100,7 +117,7 @@ export default defineEventHandler(async (event) => {
     fields = Object.fromEntries(keys.map((k) => [k, FIELD_DESCRIPTIONS[k] ?? 'string | null']))
   }
   const schemaText = Object.entries(fields).map(([k, v]) => `  "${k}": ${v}`).join(',\n')
-  const extractPrompt = `คุณคือผู้ช่วยสกัดข้อมูลนาฬิกามือสองจากภาพหน้าเว็บ chrono24
+  const extractPrompt = `คุณคือผู้ช่วยสกัดข้อมูลสินค้ามือสองจากภาพหน้าเว็บ auctionhouse.co.th
 ตอบกลับเป็น JSON array ของสินค้าทุกชิ้นที่เห็นในภาพ ไม่มีข้อความอื่น ไม่มี markdown code block
 ถ้าหาข้อมูลใดไม่ได้ให้ใส่ null
 
@@ -123,7 +140,7 @@ ${schemaText}
 
   const emit = (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => {
     send({ type: 'log', ts: new Date().toISOString(), level, msg, ...(data !== undefined ? { data } : {}) })
-    const prefix = `[chrono24][${level.toUpperCase()}]`
+    const prefix = `[auctionhouse][${level.toUpperCase()}]`
     if (level === 'error') console.error(prefix, msg, data ?? '')
     else if (level === 'warn') console.warn(prefix, msg, data ?? '')
     else console.log(prefix, msg, data ?? '')
@@ -141,7 +158,7 @@ ${schemaText}
     })
 
     try {
-      const searchUrl = `${CHRONO24_BASE}/search/index.htm?query=${encodeURIComponent(query)}&dosearch=1`
+      const searchUrl = `${AH_BASE}/catalogsearch/result/?q=${encodeURIComponent(query)}`
       emit('info', `Starting search`, { query, limit })
 
       let listingUrls: string[] = []
@@ -152,14 +169,14 @@ ${schemaText}
           emit('info', `Loading search page`)
           await page.goto(searchUrl, { waitUntil: 'load', timeout: 30000 })
           await page.waitForTimeout(3000)
-          await dismissCookieBanner(page)
+          await dismissPopups(page)
           await page.waitForTimeout(500)
 
           for (const sel of LISTING_LINK_SELECTORS) {
             const hrefs = await page.locator(sel).evaluateAll((els) =>
               (els as HTMLAnchorElement[]).map((a) => a.href).filter(Boolean)
             )
-            const productUrls = hrefs.filter((h) => h.includes('chrono24.com') && (h.includes('--id') || h.includes('/watches/')))
+            const productUrls = hrefs.filter((h) => h.includes('auctionhouse.co.th') && !h.includes('/catalogsearch/') && !h.includes('/customer/'))
             if (productUrls.length > 0) {
               listingUrls = [...new Set(productUrls)].slice(0, limit)
               emit('info', `Found ${listingUrls.length} listings`)
@@ -169,11 +186,26 @@ ${schemaText}
 
           if (listingUrls.length === 0) {
             const allHrefs = await page.locator('a[href]').evaluateAll((els) => (els as HTMLAnchorElement[]).map((a) => a.href))
-            listingUrls = [...new Set(allHrefs.filter((h) => h.includes('chrono24.com') && h.includes('--id')))].slice(0, limit)
+            listingUrls = [...new Set(allHrefs.filter((h) => h.includes('auctionhouse.co.th') && h.endsWith('.html') && !h.includes('/catalogsearch/') && !h.includes('/customer/')))].slice(0, limit)
             emit(listingUrls.length > 0 ? 'info' : 'warn', `Fallback scan: ${listingUrls.length} URLs`)
           }
+
+          if (listingUrls.length === 0) {
+            emit('warn', 'No URLs found — may be blocked by bot protection')
+            const buf = await page.screenshot({ type: 'jpeg', quality: 80 })
+            const b64 = buf.toString('base64')
+            await mkdir(screenshotDir, { recursive: true })
+            const fname = `${new Date().toISOString().slice(0, 10).replace(/-/g, '')}_${categoryId}_AUC_searchpage.jpg`
+            await writeFile(join(screenshotDir, fname), buf)
+            send({ type: 'searchpage', base64: b64 })
+            send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No listing URLs found — bot protection may be active' })
+            ctrl.close()
+            await ctx.close().catch(() => {})
+            await browser.close()
+            return
+          }
         } finally {
-          await ctx.close()
+          await ctx.close().catch(() => {})
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -184,20 +216,12 @@ ${schemaText}
         return
       }
 
-      if (listingUrls.length === 0) {
-        emit('warn', 'No listing URLs found — may be blocked')
-        send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No listing URLs found' })
-        ctrl.close()
-        await browser.close()
-        return
-      }
-
       emit('info', `Processing ${listingUrls.length} listings`)
       await mkdir(screenshotDir, { recursive: true })
 
       for (let i = 0; i < listingUrls.length; i++) {
         const url = listingUrls[i]
-        const filename = buildFilename(i, url)
+        const filename = buildFilename(i, categoryId, url)
         const result: ItemResult = { index: i, url, filename: null, base64: null, screenshotOk: false, extractOk: false, items: [] }
         results.push(result)
 
@@ -211,7 +235,7 @@ ${schemaText}
           try {
             await page.goto(url, { waitUntil: 'load', timeout: 30000 })
             await page.waitForTimeout(2500)
-            await dismissCookieBanner(page)
+            await dismissPopups(page)
             await page.mouse.move(0, 0)
             await page.waitForTimeout(300)
             const buffer = await page.screenshot({ fullPage: false, type: 'jpeg', quality: 85 })
@@ -229,7 +253,7 @@ ${schemaText}
           result.error = `screenshot: ${msg}`
           emit('error', `[${i + 1}] Screenshot failed`, { msg })
           const isTimeout = msg.includes('timeout') || msg.includes('Timeout')
-          await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: isTimeout ? 504 : 500, screenshotFile: null, itemsExtracted: null, error: msg, errorType: isTimeout ? 'timeout' : 'screenshot' }).catch(() => {})
+          await appendLog({ timestamp: new Date().toISOString(), source: 'auctionhouse', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: isTimeout ? 504 : 500, screenshotFile: null, itemsExtracted: null, error: msg, errorType: isTimeout ? 'timeout' : 'screenshot' }).catch(() => {})
           send({ type: 'result', ...result })
           continue
         }
@@ -244,20 +268,20 @@ ${schemaText}
             emit('info', `[${i + 1}] Extracted ${result.items.length} item(s)`)
             const ts = new Date().toISOString()
             await Promise.all([
-              appendLog({ timestamp: ts, source: 'chrono24', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, itemsExtracted: result.items.length, error: null, errorType: null }).catch(() => {}),
-              result.items.length > 0 ? saveResult({ timestamp: ts, source: 'chrono24', url, categoryId, screenshotFile: filename, items: result.items }).catch((e) => emit('warn', 'saveResult failed', String(e))) : Promise.resolve(),
+              appendLog({ timestamp: ts, source: 'auctionhouse', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, itemsExtracted: result.items.length, error: null, errorType: null }).catch(() => {}),
+              result.items.length > 0 ? saveResult({ timestamp: ts, source: 'auctionhouse', url, categoryId, screenshotFile: filename, items: result.items }).catch((e) => emit('warn', 'saveResult failed', String(e))) : Promise.resolve(),
             ])
           } catch {
             result.raw = text
             result.extractOk = false
             emit('warn', `[${i + 1}] Gemini response not valid JSON`, { preview: text.slice(0, 120) })
-            await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, itemsExtracted: 0, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse' }).catch(() => {})
+            await appendLog({ timestamp: new Date().toISOString(), source: 'auctionhouse', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, itemsExtracted: 0, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse' }).catch(() => {})
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           result.error = (result.error ?? '') + `extract: ${msg}`
           emit('error', `[${i + 1}] Gemini failed`, { msg })
-          await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 502, screenshotFile: filename, itemsExtracted: null, error: msg, errorType: 'extraction' }).catch(() => {})
+          await appendLog({ timestamp: new Date().toISOString(), source: 'auctionhouse', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 502, screenshotFile: filename, itemsExtracted: null, error: msg, errorType: 'extraction' }).catch(() => {})
         }
 
         send({ type: 'result', ...result })
