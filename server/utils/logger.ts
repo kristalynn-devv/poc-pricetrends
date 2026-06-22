@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 
@@ -11,9 +11,24 @@ export interface LogEntry {
   durationMs: number
   httpStatus: number
   screenshotFile: string | null
+  dataFile: string | null
   itemsExtracted: number | null
   error: string | null
   errorType: 'timeout' | 'screenshot' | 'extraction' | 'parse' | 'config' | null
+}
+
+export async function saveItems(
+  items: unknown[],
+  categoryId: string,
+  screenshotFile: string,
+): Promise<string> {
+  const date = screenshotFile.slice(0, 8)
+  const dir = join(process.cwd(), 'output', 'data', date, categoryId)
+  await mkdir(dir, { recursive: true })
+  const name = screenshotFile.replace(/\.jpg$/i, '.json')
+  const filePath = join(dir, name)
+  await writeFile(filePath, JSON.stringify(items, null, 2), 'utf8')
+  return `${date}/${categoryId}/${name}`
 }
 
 export function extractDomain(url: string): string {

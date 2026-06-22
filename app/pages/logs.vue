@@ -272,6 +272,27 @@
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4">
+          <!-- Screenshot -->
+          <div v-if="detailEntry.screenshotFile" class="mb-4">
+            <a :href="`/api/screenshot?file=${detailEntry.screenshotFile}`" target="_blank">
+              <v-img
+                :src="`/api/screenshot?file=${detailEntry.screenshotFile}`"
+                max-height="260"
+                contain
+                class="bg-grey-lighten-4 rounded cursor-pointer"
+              />
+            </a>
+          </div>
+
+          <!-- Data file -->
+          <div class="mb-4" v-if="detailEntry.dataFile">
+            <v-btn
+              size="small" variant="tonal" color="primary" prepend-icon="mdi-code-json"
+              :href="`/api/data?file=${detailEntry.dataFile}`"
+              target="_blank"
+            >ดูข้อมูล JSON</v-btn>
+          </div>
+
           <v-table density="compact">
             <tbody>
               <tr v-for="[k, v] in detailRows" :key="k">
@@ -364,6 +385,7 @@ const detailRows = computed(() => {
     ['categoryId', e.categoryId],
     ['httpStatus', e.httpStatus],
     ['screenshotFile', e.screenshotFile],
+    ['dataFile', e.dataFile],
     ['itemsExtracted', e.itemsExtracted],
     ['durationMs', e.durationMs != null ? `${e.durationMs.toLocaleString()} ms` : null],
     ['errorType', e.errorType],

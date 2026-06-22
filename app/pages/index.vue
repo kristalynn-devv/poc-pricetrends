@@ -1,11 +1,11 @@
 <template>
-  <v-container class="py-8" max-width="1400">
+  <v-container class="py-8" max-width="1200">
     <v-row class="mb-6">
       <v-col>
         <h1 class="text-h4 font-weight-bold">Price Extractor</h1>
         <p class="text-body-2 text-medium-emphasis mt-1">ค้นหาราคาสินค้าแยกตามหมวด</p>
       </v-col>
-      <v-col cols="auto" class="d-flex align-center gap-2">
+      <v-col cols="auto">
         <v-btn variant="text" prepend-icon="mdi-table-eye" to="/entries" size="small">รายการข้อมูล</v-btn>
         <v-btn variant="text" prepend-icon="mdi-text-box-outline" to="/logs" size="small">System Logs</v-btn>
       </v-col>
@@ -87,7 +87,7 @@
               </v-col>
             </v-row>
             <!-- Query chips -->
-            <div v-if="grp.queries.length > 0" class="d-flex flex-wrap gap-1">
+            <div v-if="grp.queries.length > 0" class="d-flex flex-wrap gap-1" @click.stop>
               <v-chip
                 v-for="(q, qi) in grp.queries"
                 :key="qi"
@@ -123,8 +123,8 @@
 
                 <v-list-item-title class="text-body-2 d-flex align-center">
                   <span>{{ src.name }}</span>
-                  <v-chip v-if="src.apiRoute" size="x-small" color="success" variant="tonal" class="ml-2">พร้อมใช้</v-chip>
-                  <v-chip v-else size="x-small" color="grey" variant="tonal" class="ml-2">กำลังพัฒนา</v-chip>
+                  <v-chip v-if="src.apiRoute" size="x-small" color="success" variant="tonal" class="ml-2">Ready</v-chip>
+                  <v-chip v-else size="x-small" color="grey" variant="tonal" class="ml-2">Not Ready</v-chip>
                   <v-progress-circular v-if="grp.runs[src.name]?.loading" indeterminate size="14" width="2" class="ml-2" />
                   <v-chip v-else-if="srcExtracted(grp, src.name).length > 0" size="x-small" color="primary" variant="tonal" class="ml-2">
                     {{ srcExtracted(grp, src.name).length }} รายการ
@@ -218,7 +218,7 @@
           />
 
           <!-- Error -->
-          <v-alert v-if="detailRun.error" type="error" density="compact" :text="detailRun.error" />
+          <v-alert v-if="detailRun.error" type="error" density="compact" :text="detailRun.error" class="alert-compact" style="flex:none" />
 
           <!-- Results table -->
           <v-data-table
@@ -259,6 +259,7 @@ interface ItemResult {
   extractOk: boolean
   items: Record<string, unknown>[]
   error?: string
+  raw?: string
 }
 
 interface LogLine { ts: string; level: string; msg: string; data?: unknown }
@@ -366,7 +367,7 @@ function makeRun(): SourceRun {
 
 function makeGroup(label: string, ids: string[], sources: SourceDef[]): CategoryGroup {
   const enabled: Record<string, boolean> = {}
-  sources.forEach((s) => { enabled[s.name] = !!s.apiRoute })
+  sources.forEach((s) => { enabled[s.name] = false })
   return { label, ids, sources, queries: [], newQuery: '', limit: 5, running: false, enabled, runs: {} }
 }
 
@@ -382,35 +383,35 @@ const categoryGroups = ref<CategoryGroup[]>([
     { name: 'StarBuyers Global Auction', url: 'https://www.starbuyers-global-auction.com/login' },
     { name: 'Chrono24', url: 'https://www.chrono24.com', apiRoute: '/api/chrono24-search' },
     { name: 'Auction House', url: 'https://www.auctionhouse.co.th', apiRoute: '/api/auctionhouse-search' },
-    { name: 'Radium Watch', url: 'https://www.radiumwatch.com' },
-    { name: 'Siam Watch Club', url: 'https://www.siamwatchclub.com' },
-    { name: 'Komehyo (นาฬิกา)', url: 'https://www.komehyo.co.th/th/product-list/?product_type=2725' },
+    { name: 'Radium Watch', url: 'https://radiumwatch.com', apiRoute: '/api/radiumwatch-search' },
+    { name: 'Siam Watch Club', url: 'https://www.siamwatchclub.com', apiRoute: '/api/siamwatchclub-search' },
+    { name: 'Komehyo (นาฬิกา)', url: 'https://www.komehyo.co.th', apiRoute: '/api/komehyo-search' },
   ]),
   makeGroup('พระ/วัตถุมงคล', ['106'], [
-    { name: 'Thaprachan', url: 'https://www.thaprachan.com/' },
-    { name: 'Wutdychonburi', url: 'https://wutdychonburi.com/' },
-    { name: 'Prapantip', url: 'https://www.prapantip.com/amulet/' },
+    { name: 'Thaprachan', url: 'https://www.thaprachan.com/', apiRoute: '/api/thaprachan-search' },
+    { name: 'Wutdychonburi', url: 'https://wutdychonburi.com/', apiRoute: '/api/wutdychonburi-search' },
+    { name: 'Prapantip', url: 'https://www.prapantip.com/amulet/', apiRoute: '/api/prapantip-search' },
     { name: 'G-Pra', url: 'https://www.g-pra.com/' },
-    { name: 'UAmulet', url: 'https://www.uamulet.com/' },
+    { name: 'UAmulet', url: 'https://uauction.uamulet.com/AuctionUClubTopList.aspx', apiRoute: '/api/uauction-search' },
   ]),
   makeGroup('สินค้าไอที / โน้ตบุ๊ก / สมาร์ทโฟน', ['107', '109', '112'], [
-    { name: 'ShopBKK', url: 'https://www.shopbkk.com' },
-    { name: 'CompAsia', url: 'https://www.compasia.co.th' },
-    { name: 'Kaidee', url: 'https://www.kaidee.com' },
+    { name: 'ShopBKK', url: 'https://www.shopbkk.com', apiRoute: '/api/shopbkk-search' },
+    { name: 'CompAsia', url: 'https://compasia.co.th', apiRoute: '/api/compasia-search' },
+    { name: 'Kaidee', url: 'https://www.kaidee.com', apiRoute: '/api/kaidee-search' },
     { name: 'Pantipmarket (Mobile)', url: 'https://www.pantipmarket.com' },
     { name: '108 Accessory', url: 'http://www.108accessory.com/' },
   ]),
   makeGroup('แบรนเนม / แว่นตา', ['108', '110'], [
-    { name: 'Komehyo', url: 'https://www.komehyo.co.th/' },
-    { name: 'Sasom', url: 'https://sasom.co.th/th' },
-    { name: 'Moppet Brandname', url: 'https://www.moppetbrandname.com/' },
-    { name: 'SF Brandname', url: 'https://sfbrandname.com/' },
-    { name: 'Brandname Voyage', url: 'https://brandnamevoyage.com/' },
+    { name: 'Komehyo', url: 'https://www.komehyo.co.th/', apiRoute: '/api/komehyo-search' },
+    { name: 'Sasom', url: 'https://sasom.co.th/th', apiRoute: '/api/sasom-search' },
+    { name: 'Moppet Brandname', url: 'https://www.moppetbrandname.com/', apiRoute: '/api/moppet-search' },
+    { name: 'SF Brandname', url: 'https://sfbrandname.com/', apiRoute: '/api/sfbrandname-search' },
+    { name: 'Brandname Voyage', url: 'https://brandnamevoyage.com/', apiRoute: '/api/brandnamevoyage-search' },
   ]),
   makeGroup('เครื่องมือช่าง', ['111'], [
-    { name: 'Kaidee (เครื่องมือช่าง)', url: 'https://www.kaidee.com/c296-appliances_decoration-accessories_and_tool_suppliers' },
-    { name: 'Shopee (เครื่องมือช่าง)', url: 'https://shopee.co.th/search?filters=9&keyword=%E0%B9%80%E0%B8%84%E0%B8%A3%E0%B8%B7%E0%B9%88%E0%B8%AD%E0%B8%87%E0%B8%A1%E0%B8%B7%E0%B8%AD%E0%B8%8A%E0%B9%88%E0%B8%B2%E0%B8%87&noCorrection=true&page=0' },
-    { name: 'Truck2Hand', url: 'https://www.truck2hand.com/category/cat_equipment/' },
+    { name: 'Kaidee (เครื่องมือช่าง)', url: 'https://www.kaidee.com/c296-appliances_decoration-accessories_and_tool_suppliers', apiRoute: '/api/kaidee-search' },
+    { name: 'Shopee (เครื่องมือช่าง)', url: 'https://shopee.co.th/search?keyword=%E0%B9%80%E0%B8%84%E0%B8%A3%E0%B8%B7%E0%B9%88%E0%B8%AD%E0%B8%87%E0%B9%80%E0%B8%9B%E0%B9%88%E0%B8%B2%E0%B8%A5%E0%B8%A1' },
+    { name: 'Truck2Hand', url: 'https://www.truck2hand.com/category/cat_equipment/', apiRoute: '/api/truck2hand-search' },
     { name: 'Facebook กลุ่ม 1', url: 'https://www.facebook.com/groups/198988708155849/' },
     { name: 'Facebook กลุ่ม 2', url: 'https://www.facebook.com/groups/4392804640788959/' },
     { name: 'Facebook กลุ่ม 3', url: 'https://www.facebook.com/groups/455495127955260/' },
@@ -422,14 +423,20 @@ function srcExtracted(grp: CategoryGroup, srcName: string) {
   const run = grp.runs[srcName]
   if (!run) return []
   const multiQuery = grp.queries.length > 1
-  return run.results.flatMap((r) =>
-    r.items.map((item) => ({
+  return run.results.flatMap((r) => {
+    const base = {
       _screenshot: r.base64 ?? '',
       ...(multiQuery ? { _query: (r as ItemResult & { _query?: string })._query ?? '' } : {}),
       _source: r.filename ?? r.url,
-      ...item,
-    }))
-  )
+    }
+    if (r.items.length > 0) {
+      return r.items.map((item) => ({ ...base, ...item }))
+    }
+    if (r.screenshotOk && !r.extractOk) {
+      return [{ ...base, _error: r.error ?? r.raw ?? 'AI extraction failed' }]
+    }
+    return []
+  })
 }
 
 function srcHeaders(grp: CategoryGroup, srcName: string) {
@@ -459,6 +466,15 @@ function scrollTerm(groupLabel: string, srcName: string) {
 const API_CATEGORY_MAP: Record<string, string> = {
   '/api/chrono24-search': '103',
   '/api/auctionhouse-search': '103',
+  '/api/radiumwatch-search': '103',
+  '/api/siamwatchclub-search': '103',
+  '/api/komehyo-search': '103', // overridden per-group at runtime
+  '/api/thaprachan-search': '106',
+  '/api/compasia-search': '112',
+  // kaidee-search is used in multiple groups; categoryId resolved from grp.ids[0] at runtime
+  '/api/pantipmarket-search': '107',
+  '/api/sfbrandname-search': '108',
+  '/api/brandnamevoyage-search': '108',
 }
 
 async function runSourceQuery(grp: CategoryGroup, src: SourceDef, query: string, qi: number) {
@@ -557,6 +573,8 @@ async function runGroup(grp: CategoryGroup) {
 </script>
 
 <style scoped>
+.alert-compact :deep(.v-alert__content) { padding-top: 6px; padding-bottom: 6px; }
+.alert-compact { min-height: unset !important; }
 .terminal-box {
   background: #1e1e1e;
   font-family: monospace;

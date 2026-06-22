@@ -28,11 +28,22 @@ pnpm preview
 
 **Server routes:**
 - `server/api/analyze.post.ts` — **main endpoint**: screenshot + extract + save ในครั้งเดียว → `{ filename, base64, mimeType, items[] }`
-- `server/api/chrono24-search.post.ts` — Chrono24 batch search: scrapes listing page → ถ่ายแต่ละรายการ + Gemini extract
+- `server/api/chrono24-search.post.ts` — Chrono24 batch search (103 นาฬิกา)
+- `server/api/radiumwatch-search.post.ts` — Radium Watch batch search (103)
+- `server/api/siamwatchclub-search.post.ts` — Siam Watch Club batch search (103)
+- `server/api/komehyo-search.post.ts` — Komehyo batch search (103/108/110)
+- `server/api/thaprachan-search.post.ts` — Thaprachan batch search (106 พระ)
+- `server/api/wutdychonburi-search.post.ts` — Wutdychonburi batch search (106)
+- `server/api/prapantip-search.post.ts` — Prapantip batch search (106)
+- `server/api/uauction-search.post.ts` — UAuction/UAmulet batch search (106)
+- `server/api/shopbkk-search.post.ts` — ShopBKK batch search (107/109/112 IT)
+- `server/api/compasia-search.post.ts` — CompAsia batch search (107/109/112)
 - `server/api/screenshot.post.ts` — standalone screenshot → `{ base64, mimeType, filename }`
 - `server/api/extract.post.ts` — standalone Gemini extraction → `{ items[] }`
 - `GET /api/logs/entries?date=YYYYMMDD` — raw JSONL log entries for a given day
 - `GET /api/logs/summary?date=YYYYMMDD` — daily summary (total/success/failed, bySource, byCategory, avgDuration)
+
+แต่ละ batch-search route รับ `{ query, categoryId, limit }` แล้ว scrape listing page → ถ่ายแต่ละ item + Gemini extract → `{ results[], logs[] }`
 
 **Screenshot config:**
 - Viewport: 1920×1080

@@ -1,16 +1,10 @@
 import { chromium } from 'playwright'
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { writeFile, mkdir, appendFile } from 'node:fs/promises'
+import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { appendLog, extractDomain } from '../utils/logger'
+import { appendLog, saveItems, extractDomain } from '../utils/logger'
 import type { LogEntry } from '../utils/logger'
 
-async function saveResult(entry: { timestamp: string; source: string; url: string; categoryId: string | null; screenshotFile: string; items: unknown[] }) {
-  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const dir = join(process.cwd(), 'output', 'results')
-  await mkdir(dir, { recursive: true })
-  await appendFile(join(dir, `${dateStr}.jsonl`), JSON.stringify(entry) + '\n', 'utf8')
-}
 
 const SOURCE_CODES: Record<string, string> = {
   'chrono24.com': 'CHR',
@@ -90,6 +84,7 @@ export default defineEventHandler(async (event) => {
     const logEntry: LogEntry = {
       timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
       durationMs: 0, httpStatus: 500, screenshotFile: null,
+      dataFile: null,
       itemsExtracted: null, error: 'GEMINI_API_KEY not configured', errorType: 'config',
     }
     await appendLog(logEntry).catch(() => {})
@@ -125,6 +120,7 @@ export default defineEventHandler(async (event) => {
       await appendLog({
         timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
         durationMs: Date.now() - startedAt, httpStatus: 504, screenshotFile: null,
+        dataFile: null,
         itemsExtracted: null,
         error: err?.message ?? 'Page load failed',
         errorType: isTimeout ? 'timeout' : 'screenshot',
@@ -158,6 +154,7 @@ export default defineEventHandler(async (event) => {
       await appendLog({
         timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
         durationMs: Date.now() - startedAt, httpStatus: 500, screenshotFile: null,
+        dataFile: null,
         itemsExtracted: null, error: err?.message ?? 'Screenshot failed', errorType: 'screenshot',
       }).catch(() => {})
       throw createError({ statusCode: 500, message: 'Screenshot failed' })
@@ -200,6 +197,7 @@ ${schemaText}
     await appendLog({
       timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
       durationMs: Date.now() - startedAt, httpStatus: 502, screenshotFile: filename,
+      dataFile: null,
       itemsExtracted: null, error: err?.message ?? 'Gemini extraction failed', errorType: 'extraction',
     }).catch(() => {})
     throw createError({ statusCode: 502, message: 'Gemini extraction failed' })
@@ -207,23 +205,22 @@ ${schemaText}
 
   try {
     const items = JSON.parse(text)
-    const ts = new Date().toISOString()
-    const src = extractDomain(url)
-    await Promise.all([
-      appendLog({
-        timestamp: ts, source: src, url, categoryId: categoryId ?? null,
-        durationMs: Date.now() - startedAt, httpStatus: 200, screenshotFile: filename,
-        itemsExtracted: Array.isArray(items) ? items.length : 0, error: null, errorType: null,
-      }).catch(() => {}),
-      Array.isArray(items) && items.length > 0
-        ? saveResult({ timestamp: ts, source: src, url, categoryId: categoryId ?? null, screenshotFile: filename, items }).catch((e: any) => console.error('[saveResult]', e))
-        : Promise.resolve(),
-    ])
+    const cat = categoryId ?? '000'
+    const dataFile = Array.isArray(items) && items.length > 0
+      ? await saveItems(items, cat, filename).catch(() => null)
+      : null
+    await appendLog({
+      timestamp: new Date().toISOString(), source: extractDomain(url), url,
+      categoryId: cat, durationMs: Date.now() - startedAt, httpStatus: 200,
+      screenshotFile: filename, dataFile,
+      itemsExtracted: Array.isArray(items) ? items.length : 0, error: null, errorType: null,
+    }).catch(() => {})
     return { filename, base64, mimeType, items }
   } catch {
     await appendLog({
-      timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
-      durationMs: Date.now() - startedAt, httpStatus: 200, screenshotFile: filename,
+      timestamp: new Date().toISOString(), source: extractDomain(url), url,
+      categoryId: categoryId ?? null, durationMs: Date.now() - startedAt, httpStatus: 200,
+      screenshotFile: filename, dataFile: null,
       itemsExtracted: 0, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse',
     }).catch(() => {})
     return { filename, base64, mimeType, items: [], raw: text }

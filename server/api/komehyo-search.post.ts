@@ -1,8 +1,8 @@
-import { chromium, type Browser, type BrowserContext } from 'playwright'
+import { chromium } from 'playwright'
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { writeFile, mkdir } from 'node:fs/promises'
+import { writeFile, mkdir, appendFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { appendLog, saveItems, extractDomain } from '../utils/logger'
+import { appendLog } from '../utils/logger'
 
 interface ItemResult {
   index: number
@@ -16,25 +16,39 @@ interface ItemResult {
   error?: string
 }
 
-const CHRONO24_BASE = 'https://www.chrono24.com'
+const KMH_BASE = 'https://www.komehyo.co.th'
+const KMH_LIST = `${KMH_BASE}/th/product-list/`
 
-const LISTING_LINK_SELECTORS = [
-  'article a[href*="--id"]',
-  '[data-article-id] a',
-  '.article-item a',
-  'a[href*=".htm"][href*="chrono24.com"]',
+// product_type filter per category (omit = search all types)
+const CATEGORY_PRODUCT_TYPE: Record<string, string> = {
+  '103': '2725', // นาฬิกา
+}
+
+// Search box selectors in order of preference
+const SEARCH_INPUT_SELECTORS = [
+  'input[placeholder*="ค้นหา"]',
+  'input[name="keyword"]',
+  'input[name="q"]',
+  'input[name="search"]',
+  'input[type="search"]',
+  '.search-box input',
+  'header input',
 ]
 
 const CATEGORY_FIELDS: Record<string, string[]> = {
   '103': ['brand', 'model', 'price', 'currency', 'condition', 'dialColor', 'caseMaterial', 'strapMaterial', 'movementType'],
+  '108': ['itemType', 'brand', 'model', 'price', 'currency', 'year', 'condition'],
+  '110': ['itemType', 'brand', 'model', 'price', 'currency', 'year', 'condition'],
 }
 
 const FIELD_DESCRIPTIONS: Record<string, string> = {
   price: 'ตัวเลขราคา (ไม่มีจุลภาค ไม่มีสัญลักษณ์สกุลเงิน) | null',
   currency: 'สกุลเงิน เช่น THB, USD, JPY, EUR | null',
   condition: '"new" | "used" | "unknown" | null',
-  brand: 'แบรนด์ เช่น Rolex, Apple',
-  model: 'รุ่น เช่น Datejust 41, Submariner',
+  brand: 'แบรนด์ เช่น Rolex, Omega, AP, Louis Vuitton, Gucci',
+  model: 'รุ่น เช่น Seamaster, Neverfull, GG Marmont',
+  itemType: 'ประเภทสินค้า เช่น กระเป๋า, กระเป๋าสตางค์, แว่นตา, เข็มขัด',
+  year: 'ปีที่ผลิต (ตัวเลข) | null',
   dialColor: 'สีหน้าปัดนาฬิกา',
   caseMaterial: 'วัสดุตัวเรือนนาฬิกา',
   strapMaterial: 'วัสดุสายนาฬิกา',
@@ -45,35 +59,31 @@ const DISMISS_SELECTORS = [
   'dialog button:has-text("OK")', '[role="dialog"] button:has-text("OK")',
   'button:has-text("Accept all")', 'button:has-text("Accept All")',
   'button:has-text("Agree")', 'button:has-text("Accept")',
+  'button:has-text("ยอมรับ")',
 ]
 
 function buildFilename(index: number, url: string): string {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const idMatch = url.match(/--id(\d+)/)
-  const articleId = idMatch ? idMatch[1] : `pos${String(index + 1).padStart(2, '0')}`
-  return `${date}_103_CHR_${articleId}.jpg`
+  const slugMatch = url.replace(/\/$/, '').match(/\/([^/]+)$/)
+  const slug = slugMatch ? slugMatch[1].slice(0, 30) : String(index + 1).padStart(2, '0')
+  return `${date}_103_KMH_${slug}.jpg`
 }
 
-async function dismissCookieBanner(page: import('playwright').Page): Promise<void> {
+async function dismissPopups(page: import('playwright').Page): Promise<void> {
   for (const sel of DISMISS_SELECTORS) {
     try {
       const btn = page.locator(sel).first()
-      if (await btn.isVisible({ timeout: 800 })) { await btn.click({ timeout: 3000 }); await page.waitForTimeout(800); return }
+      if (await btn.isVisible({ timeout: 600 })) { await btn.click({ timeout: 2000 }); await page.waitForTimeout(500); return }
     } catch { }
   }
 }
 
-async function newStealth(browser: Browser): Promise<BrowserContext> {
-  const ctx = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    locale: 'en-US',
-    extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
-    viewport: { width: 1920, height: 1080 },
-  })
-  await ctx.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }) })
-  return ctx
+async function saveResult(entry: { timestamp: string; source: string; url: string; categoryId: string; screenshotFile: string; items: unknown[] }) {
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const dir = join(process.cwd(), 'output', 'results')
+  await mkdir(dir, { recursive: true })
+  await appendFile(join(dir, `${dateStr}.jsonl`), JSON.stringify(entry) + '\n', 'utf8')
 }
-
 
 export default defineEventHandler(async (event) => {
   const { query, categoryId = '103', template, limit = 5 } = await readBody<{
@@ -94,7 +104,8 @@ export default defineEventHandler(async (event) => {
     fields = Object.fromEntries(keys.map((k) => [k, FIELD_DESCRIPTIONS[k] ?? 'string | null']))
   }
   const schemaText = Object.entries(fields).map(([k, v]) => `  "${k}": ${v}`).join(',\n')
-  const extractPrompt = `คุณคือผู้ช่วยสกัดข้อมูลนาฬิกามือสองจากภาพหน้าเว็บ chrono24
+  const categoryLabel = categoryId === '103' ? 'นาฬิกา' : categoryId === '110' ? 'แว่นตา' : 'แบรนเนม'
+  const extractPrompt = `คุณคือผู้ช่วยสกัดข้อมูลสินค้ามือสอง (${categoryLabel}) จากภาพหน้าเว็บ komehyo.co.th
 ตอบกลับเป็น JSON array ของสินค้าทุกชิ้นที่เห็นในภาพ ไม่มีข้อความอื่น ไม่มี markdown code block
 ถ้าหาข้อมูลใดไม่ได้ให้ใส่ null
 
@@ -117,7 +128,7 @@ ${schemaText}
 
   const emit = (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => {
     send({ type: 'log', ts: new Date().toISOString(), level, msg, ...(data !== undefined ? { data } : {}) })
-    const prefix = `[chrono24][${level.toUpperCase()}]`
+    const prefix = `[komehyo][${level.toUpperCase()}]`
     if (level === 'error') console.error(prefix, msg, data ?? '')
     else if (level === 'warn') console.warn(prefix, msg, data ?? '')
     else console.log(prefix, msg, data ?? '')
@@ -135,37 +146,74 @@ ${schemaText}
     })
 
     try {
-      const searchUrl = `${CHRONO24_BASE}/search/index.htm?query=${encodeURIComponent(query)}&dosearch=1`
-      emit('info', `Starting search`, { query, limit })
+      emit('info', `Starting search`, { query, categoryId, limit })
+      const productType = CATEGORY_PRODUCT_TYPE[categoryId]
+      const startUrl = productType ? `${KMH_LIST}?product_type=${productType}` : KMH_LIST
+      let searchUrl = startUrl
 
       let listingUrls: string[] = []
       try {
-        const ctx = await newStealth(browser)
+        const ctx = await browser.newContext({
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+          locale: 'th-TH',
+          extraHTTPHeaders: { 'Accept-Language': 'th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7' },
+          viewport: { width: 1920, height: 1080 },
+        })
+        await ctx.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }) })
         const page = await ctx.newPage()
         try {
-          emit('info', `Loading search page`)
-          await page.goto(searchUrl, { waitUntil: 'load', timeout: 30000 })
-          await page.waitForTimeout(3000)
-          await dismissCookieBanner(page)
+          emit('info', `Loading product-list page`, { startUrl })
+          await page.goto(startUrl, { waitUntil: 'load', timeout: 30000 })
+          await page.waitForTimeout(2000)
+          await dismissPopups(page)
+
+          // Find and use the search box
+          let searched = false
+          for (const sel of SEARCH_INPUT_SELECTORS) {
+            try {
+              const input = page.locator(sel).first()
+              if (await input.isVisible({ timeout: 1000 })) {
+                await input.click()
+                await input.fill(query)
+                await page.waitForTimeout(300)
+                await page.keyboard.press('Enter')
+                await page.waitForLoadState('load', { timeout: 20000 })
+                await page.waitForTimeout(2000)
+                searchUrl = page.url()
+                emit('info', `Searched via input`, { sel, resultUrl: searchUrl })
+                searched = true
+                break
+              }
+            } catch { }
+          }
+
+          if (!searched) {
+            // Fallback: try URL with keyword param directly
+            searchUrl = `${KMH_LIST}?keyword=${encodeURIComponent(query)}`
+            emit('warn', `Search box not found, trying URL param`, { url: searchUrl })
+            await page.goto(searchUrl, { waitUntil: 'load', timeout: 30000 })
+            await page.waitForTimeout(2000)
+          }
+
+          await dismissPopups(page)
           await page.waitForTimeout(500)
 
-          for (const sel of LISTING_LINK_SELECTORS) {
-            const hrefs = await page.locator(sel).evaluateAll((els) =>
-              (els as HTMLAnchorElement[]).map((a) => a.href).filter(Boolean)
-            )
-            const productUrls = hrefs.filter((h) => h.includes('chrono24.com') && (h.includes('--id') || h.includes('/watches/')))
-            if (productUrls.length > 0) {
-              listingUrls = [...new Set(productUrls)].slice(0, limit)
-              emit('info', `Found ${listingUrls.length} listings`)
-              break
-            }
-          }
+          // Collect product links — require numeric product ID in path
+          const productUrlRe = /\/th\/product\/\d+/
+          const queryTerms = query.toLowerCase().split(/\s+/).filter(Boolean)
+          const allHrefs = await page.locator('a[href]').evaluateAll((els) => (els as HTMLAnchorElement[]).map((a) => a.href))
+          const allProductUrls = [...new Set(allHrefs.filter((h) =>
+            h.includes('komehyo.co.th') && productUrlRe.test(h)
+          ))]
+          emit('info', `Raw product URLs on page`, { count: allProductUrls.length })
 
-          if (listingUrls.length === 0) {
-            const allHrefs = await page.locator('a[href]').evaluateAll((els) => (els as HTMLAnchorElement[]).map((a) => a.href))
-            listingUrls = [...new Set(allHrefs.filter((h) => h.includes('chrono24.com') && h.includes('--id')))].slice(0, limit)
-            emit(listingUrls.length > 0 ? 'info' : 'warn', `Fallback scan: ${listingUrls.length} URLs`)
-          }
+          // Filter by query terms appearing in the URL slug
+          const matched = allProductUrls.filter((h) => {
+            const slug = h.toLowerCase()
+            return queryTerms.every((t) => slug.includes(t))
+          })
+          listingUrls = (matched.length > 0 ? matched : allProductUrls).slice(0, limit)
+          emit(listingUrls.length > 0 ? 'info' : 'warn', `Filtered to ${listingUrls.length} URLs (matched=${matched.length})`)
         } finally {
           await ctx.close()
         }
@@ -179,7 +227,8 @@ ${schemaText}
       }
 
       if (listingUrls.length === 0) {
-        emit('warn', 'No listing URLs found — may be blocked')
+        emit('warn', 'No listing URLs found')
+        await appendLog({ timestamp: new Date().toISOString(), source: 'komehyo', url: searchUrl, categoryId, searchQuery: query, durationMs: 0, httpStatus: 404, screenshotFile: null, itemsExtracted: 0, error: 'No listing URLs found', errorType: null }).catch(() => {})
         send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No listing URLs found' })
         ctrl.close()
         await browser.close()
@@ -200,12 +249,18 @@ ${schemaText}
         let base64 = ''
 
         try {
-          const ctx = await newStealth(browser)
+          const ctx = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            locale: 'th-TH',
+            extraHTTPHeaders: { 'Accept-Language': 'th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7' },
+            viewport: { width: 1920, height: 1080 },
+          })
+          await ctx.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }) })
           const page = await ctx.newPage()
           try {
             await page.goto(url, { waitUntil: 'load', timeout: 30000 })
             await page.waitForTimeout(2500)
-            await dismissCookieBanner(page)
+            await dismissPopups(page)
             await page.mouse.move(0, 0)
             await page.waitForTimeout(300)
             const buffer = await page.screenshot({ fullPage: false, type: 'jpeg', quality: 85 })
@@ -223,7 +278,7 @@ ${schemaText}
           result.error = `screenshot: ${msg}`
           emit('error', `[${i + 1}] Screenshot failed`, { msg })
           const isTimeout = msg.includes('timeout') || msg.includes('Timeout')
-          await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: isTimeout ? 504 : 500, screenshotFile: null, dataFile: null, itemsExtracted: null, error: msg, errorType: isTimeout ? 'timeout' : 'screenshot' }).catch(() => {})
+          await appendLog({ timestamp: new Date().toISOString(), source: 'komehyo', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: isTimeout ? 504 : 500, screenshotFile: null, itemsExtracted: null, error: msg, errorType: isTimeout ? 'timeout' : 'screenshot' }).catch(() => {})
           send({ type: 'result', ...result })
           continue
         }
@@ -236,21 +291,22 @@ ${schemaText}
             result.items = JSON.parse(text)
             result.extractOk = true
             emit('info', `[${i + 1}] Extracted ${result.items.length} item(s)`)
-            const dataFile = result.items.length > 0
-              ? await saveItems(result.items, categoryId, filename).catch(() => null)
-              : null
-            await appendLog({ timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, itemsExtracted: result.items.length, error: null, errorType: null }).catch(() => {})
+            const ts = new Date().toISOString()
+            await Promise.all([
+              appendLog({ timestamp: ts, source: 'komehyo', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, itemsExtracted: result.items.length, error: null, errorType: null }).catch(() => {}),
+              result.items.length > 0 ? saveResult({ timestamp: ts, source: 'komehyo', url, categoryId, screenshotFile: filename, items: result.items }).catch((e) => emit('warn', 'saveResult failed', String(e))) : Promise.resolve(),
+            ])
           } catch {
             result.raw = text
             result.extractOk = false
             emit('warn', `[${i + 1}] Gemini response not valid JSON`, { preview: text.slice(0, 120) })
-            await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile: null, itemsExtracted: 0, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse' }).catch(() => {})
+            await appendLog({ timestamp: new Date().toISOString(), source: 'komehyo', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, itemsExtracted: 0, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse' }).catch(() => {})
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           result.error = (result.error ?? '') + `extract: ${msg}`
           emit('error', `[${i + 1}] Gemini failed`, { msg })
-          await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 502, screenshotFile: filename, dataFile: null, itemsExtracted: null, error: msg, errorType: 'extraction' }).catch(() => {})
+          await appendLog({ timestamp: new Date().toISOString(), source: 'komehyo', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 502, screenshotFile: filename, itemsExtracted: null, error: msg, errorType: 'extraction' }).catch(() => {})
         }
 
         send({ type: 'result', ...result })
