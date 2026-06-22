@@ -80,11 +80,61 @@ async function dismissPopups(page: import('playwright').Page): Promise<void> {
   }
 }
 
+async function isBotPage(page: import('playwright').Page): Promise<boolean> {
+  return page.locator('#lsrecaptcha-form').isVisible().catch(() => false)
+}
+
+// Navigate to URL and wait for reCAPTCHA to auto-redirect, with retry on failure
+async function gotoWithBotRetry(
+  page: import('playwright').Page,
+  url: string,
+  emit: (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => void,
+  maxRetries = 3,
+): Promise<boolean> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    await page.goto(url, { waitUntil: 'load', timeout: 30000 })
+    await page.waitForTimeout(2000)
+
+    if (!await isBotPage(page)) return true
+
+    emit('info', `Bot page detected (attempt ${attempt}/${maxRetries}) — waiting for reCAPTCHA redirect`)
+    try {
+      await page.waitForURL((u) => !u.includes('/.lsrecap/'), { timeout: 20000 })
+      await page.waitForTimeout(1500)
+      if (!await isBotPage(page)) return true
+    } catch { /* redirect timeout */ }
+
+    if (attempt < maxRetries) {
+      emit('warn', `reCAPTCHA redirect timed out — retrying in 5s`)
+      await page.waitForTimeout(5000)
+    }
+  }
+  emit('warn', `Still on bot page after ${maxRetries} attempts`)
+  return false
+}
+
 async function newStealth(browser: Browser): Promise<BrowserContext> {
   const ctx = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    locale: 'th-TH',
-    extraHTTPHeaders: { 'Accept-Language': 'th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7' },
+    locale: 'en-US',
+    extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
+    viewport: { width: 1920, height: 1080 },
+  })
+  await ctx.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }) })
+  return ctx
+}
+
+// Persistent context shares cookies across requests so reCAPTCHA cookie survives between calls
+const PROFILE_DIR = join(process.cwd(), 'output', 'browser-profiles', 'auctionhouse')
+
+async function newPersistentContext(): Promise<BrowserContext> {
+  await mkdir(PROFILE_DIR, { recursive: true })
+  const ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
+    headless: true,
+    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-setuid-sandbox'],
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    locale: 'en-US',
+    extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
     viewport: { width: 1920, height: 1080 },
   })
   await ctx.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }) })
@@ -152,10 +202,16 @@ ${schemaText}
   const results: ItemResult[] = []
 
   ;(async () => {
-    const browser = await chromium.launch({
-      headless: true,
-      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-setuid-sandbox'],
-    })
+    // Persistent context preserves reCAPTCHA cookie across pages in same request and across calls
+    let ctx: BrowserContext
+    let fallbackBrowser: import('playwright').Browser | null = null
+    try {
+      ctx = await newPersistentContext()
+    } catch {
+      // Profile locked by concurrent request — fall back to ephemeral browser
+      fallbackBrowser = await chromium.launch({ headless: true, args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-setuid-sandbox'] })
+      ctx = await newStealth(fallbackBrowser)
+    }
 
     try {
       const searchUrl = `${AH_BASE}/catalogsearch/result/?q=${encodeURIComponent(query)}`
@@ -163,12 +219,17 @@ ${schemaText}
 
       let listingUrls: string[] = []
       try {
-        const ctx = await newStealth(browser)
         const page = await ctx.newPage()
         try {
+          // Warmup: hit homepage first so reCAPTCHA cookie is obtained before search URL
+          emit('info', 'Warming up via homepage')
+          await gotoWithBotRetry(page, AH_BASE, emit, 3)
+          await dismissPopups(page)
+
           emit('info', `Loading search page`)
-          await page.goto(searchUrl, { waitUntil: 'load', timeout: 30000 })
-          await page.waitForTimeout(3000)
+          const searchOk = await gotoWithBotRetry(page, searchUrl, emit, 3)
+          if (!searchOk) emit('warn', 'Proceeding despite bot page — results may be empty')
+
           await dismissPopups(page)
           await page.waitForTimeout(500)
 
@@ -201,18 +262,17 @@ ${schemaText}
             send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No listing URLs found — bot protection may be active' })
             ctrl.close()
             await ctx.close().catch(() => {})
-            await browser.close()
             return
           }
         } finally {
-          await ctx.close().catch(() => {})
+          await page.close().catch(() => {})
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         emit('error', `Search page failed`, { msg })
         send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg })
         ctrl.close()
-        await browser.close()
+        await ctx.close().catch(() => {})
         return
       }
 
@@ -230,11 +290,9 @@ ${schemaText}
         let base64 = ''
 
         try {
-          const ctx = await newStealth(browser)
           const page = await ctx.newPage()
           try {
-            await page.goto(url, { waitUntil: 'load', timeout: 30000 })
-            await page.waitForTimeout(2500)
+            await gotoWithBotRetry(page, url, emit, 3)
             await dismissPopups(page)
             await page.mouse.move(0, 0)
             await page.waitForTimeout(300)
@@ -246,7 +304,7 @@ ${schemaText}
             result.screenshotOk = true
             emit('info', `[${i + 1}] Screenshot saved`, { filename })
           } finally {
-            await ctx.close()
+            await page.close()
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
@@ -287,7 +345,8 @@ ${schemaText}
         send({ type: 'result', ...result })
       }
 
-      await browser.close()
+      await ctx.close().catch(() => {})
+      await fallbackBrowser?.close().catch(() => {})
 
       const summary = { total: results.length, screenshotOk: results.filter((r) => r.screenshotOk).length, extractOk: results.filter((r) => r.extractOk).length }
       emit('info', `Done`, summary)
@@ -296,7 +355,8 @@ ${schemaText}
       const msg = err instanceof Error ? err.message : String(err)
       emit('error', 'Unexpected error', { msg })
       send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg })
-      await browser.close().catch(() => {})
+      await ctx.close().catch(() => {})
+      await fallbackBrowser?.close().catch(() => {})
     } finally {
       ctrl.close()
     }

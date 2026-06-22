@@ -1,498 +1,255 @@
 <template>
-  <v-container class="py-8" max-width="1200">
+  <v-container class="py-8" max-width="1400">
     <v-row class="mb-6">
       <v-col>
         <h1 class="text-h4 font-weight-bold">Price Extractor</h1>
-        <p class="text-body-2 text-medium-emphasis mt-1">ถ่ายรูปเว็บ → AI ดึงข้อมูลสินค้า</p>
+        <p class="text-body-2 text-medium-emphasis mt-1">ค้นหาราคาสินค้าแยกตามหมวด</p>
       </v-col>
-      <v-col cols="auto">
+      <v-col cols="auto" class="d-flex align-center gap-2">
         <v-btn variant="text" prepend-icon="mdi-table-eye" to="/entries" size="small">รายการข้อมูล</v-btn>
         <v-btn variant="text" prepend-icon="mdi-text-box-outline" to="/logs" size="small">System Logs</v-btn>
       </v-col>
     </v-row>
 
-    <!-- ── Tab: Single URL vs Chrono24 ── -->
-    <v-tabs v-model="activeTab" class="mb-4">
-      <v-tab value="single">Single URL</v-tab>
-      <v-tab value="chrono24">Chrono24</v-tab>
-      <v-tab value="auctionhouse">AuctionHouse</v-tab>
-    </v-tabs>
-
-    <!-- ══════════════ TAB: Single URL ══════════════ -->
-    <template v-if="activeTab === 'single'">
-      <v-card class="mb-4" rounded="lg">
-        <v-card-text>
-          <v-row dense>
-            <v-col cols="12" md="8">
-              <v-text-field
-                v-model="url"
-                label="URL หน้าเว็บ"
-                placeholder="https://..."
-                prepend-inner-icon="mdi-web"
-                variant="outlined"
-                density="compact"
-                hide-details
-              />
-            </v-col>
-            <v-col cols="12" md="2">
-              <v-select
-                v-model="categoryId"
-                :items="categories"
-                item-title="label"
-                item-value="id"
-                label="หมวดสินค้า"
-                variant="outlined"
-                density="compact"
-                hide-details
-              />
-            </v-col>
-            <v-col cols="12" md="2" class="d-flex align-center">
-              <v-btn color="primary" block :loading="screenshotLoading" :disabled="!url" @click="takeScreenshot">
-                <v-icon start>mdi-camera</v-icon>
-                ถ่ายรูป
-              </v-btn>
-            </v-col>
-          </v-row>
-        </v-card-text>
-      </v-card>
-
-      <!-- Custom template toggle -->
-      <v-card class="mb-4" rounded="lg" v-if="!useCustomTemplate">
-        <v-card-text class="py-3">
-          <span class="text-body-2 text-medium-emphasis mr-3">ใช้ template ตามหมวดสินค้า</span>
-          <v-btn size="small" variant="tonal" @click="useCustomTemplate = true">กำหนด template เอง</v-btn>
-        </v-card-text>
-      </v-card>
-
-      <v-card class="mb-4" rounded="lg" v-else>
-        <v-card-title class="py-3 px-4 text-body-1">
-          Template ที่ต้องการ
-          <v-btn size="x-small" variant="text" class="ml-2" @click="useCustomTemplate = false">ใช้ default</v-btn>
-        </v-card-title>
-        <v-card-text>
-          <v-row dense v-for="(row, i) in customFields" :key="i" align="center">
-            <v-col cols="4">
-              <v-text-field v-model="row.key" label="ชื่อ field" density="compact" variant="outlined" hide-details />
-            </v-col>
-            <v-col cols="6">
-              <v-text-field v-model="row.desc" label="คำอธิบาย" density="compact" variant="outlined" hide-details />
-            </v-col>
-            <v-col cols="2">
-              <v-btn icon="mdi-delete" size="small" variant="text" @click="customFields.splice(i, 1)" />
-            </v-col>
-          </v-row>
-          <v-btn size="small" variant="tonal" class="mt-2" prepend-icon="mdi-plus" @click="customFields.push({ key: '', desc: '' })">
-            เพิ่ม field
-          </v-btn>
-        </v-card-text>
-      </v-card>
-
-      <!-- Screenshot preview -->
-      <v-card class="mb-4" rounded="lg" v-if="screenshot">
-        <v-card-title class="py-3 px-4 d-flex align-center">
-          <v-icon class="mr-2">mdi-image</v-icon>
-          Screenshot
+    <!-- ── Category group expansion panels ── -->
+    <v-expansion-panels v-model="openPanels" multiple variant="accordion" class="mb-4">
+      <v-expansion-panel
+        v-for="grp in categoryGroups"
+        :key="grp.label"
+        rounded="lg"
+      >
+        <v-expansion-panel-title>
+          <v-icon class="mr-2" size="small">mdi-tag-multiple-outline</v-icon>
+          <span>{{ grp.label }}</span>
+          <span class="text-caption text-medium-emphasis ml-2">หมวด {{ grp.ids.join(', ') }}</span>
           <v-spacer />
-          <v-btn color="primary" size="small" :loading="extractLoading" @click="extractData">
-            <v-icon start>mdi-robot</v-icon>
-            AI ดึงข้อมูล
-          </v-btn>
-        </v-card-title>
-        <v-divider />
-        <v-img
-          :src="`data:${screenshotMime};base64,${screenshot}`"
-          max-height="500"
-          contain
-          class="bg-grey-lighten-4 cursor-pointer"
-          @click="lightboxSrc = `data:${screenshotMime};base64,${screenshot}`; lightboxOpen = true"
-        />
-      </v-card>
-      <ImageLightbox v-model="lightboxOpen" :src="lightboxSrc" />
-
-      <!-- Upload fallback -->
-      <v-card class="mb-4" rounded="lg" v-if="!screenshot">
-        <v-card-text class="py-3 text-center">
-          <p class="text-body-2 text-medium-emphasis mb-2">หรืออัปโหลดรูปเอง</p>
-          <v-btn variant="tonal" prepend-icon="mdi-upload" @click="triggerUpload">เลือกไฟล์รูป</v-btn>
-          <input ref="fileInput" type="file" accept="image/*" class="d-none" @change="onFileUpload" />
-        </v-card-text>
-      </v-card>
-
-      <!-- Error -->
-      <v-alert v-if="error" type="error" class="mb-4" closable @click:close="error = ''">{{ error }}</v-alert>
-
-      <!-- Results -->
-      <v-card rounded="lg" v-if="items.length > 0">
-        <v-card-title class="py-3 px-4 d-flex align-center">
-          <v-icon class="mr-2">mdi-table</v-icon>
-          ผลลัพธ์ ({{ items.length }} รายการ)
-          <v-spacer />
-          <v-btn size="small" variant="tonal" prepend-icon="mdi-download" @click="downloadJson(items)">JSON</v-btn>
-        </v-card-title>
-        <v-divider />
-        <v-data-table :headers="tableHeaders(items)" :items="items" density="compact" class="text-body-2" />
-      </v-card>
-    </template>
-
-    <!-- ══════════════ TAB: Chrono24 Search ══════════════ -->
-    <template v-if="activeTab === 'chrono24'">
-      <v-card class="mb-4" rounded="lg">
-        <v-card-text>
-          <v-row dense align="center">
-            <v-col cols="12" md="6">
-              <v-text-field
-                v-model="searchQuery"
-                label="ค้นหาบน Chrono24"
-                placeholder="เช่น Rolex Submariner"
-                prepend-inner-icon="mdi-magnify"
-                variant="outlined"
-                density="compact"
-                hide-details
-                @keyup.enter="runSearch"
-              />
-            </v-col>
-            <v-col cols="6" md="2">
-              <v-select
-                v-model="searchCategoryId"
-                :items="categories"
-                item-title="label"
-                item-value="id"
-                label="หมวด"
-                variant="outlined"
-                density="compact"
-                hide-details
-              />
-            </v-col>
-            <v-col cols="6" md="2">
-              <v-select
-                v-model="searchLimit"
-                :items="[3, 5, 10]"
-                label="จำนวน"
-                variant="outlined"
-                density="compact"
-                hide-details
-              />
-            </v-col>
-            <v-col cols="12" md="2" class="d-flex align-center">
-              <v-btn
-                color="primary"
-                block
-                :loading="searchLoading"
-                :disabled="!searchQuery.trim()"
-                @click="runSearch"
-              >
-                <v-icon start>mdi-magnify</v-icon>
-                ค้นหา
-              </v-btn>
-            </v-col>
-          </v-row>
-        </v-card-text>
-      </v-card>
-
-      <!-- Error -->
-      <v-alert v-if="searchError" type="error" class="mb-4" closable @click:close="searchError = ''">{{ searchError }}</v-alert>
-
-      <!-- Terminal log -->
-      <v-card class="mb-4" rounded="lg" v-if="searchLogs.length > 0 || searchLoading">
-        <v-card-title class="py-2 px-4 d-flex align-center" style="background:#1e1e1e; border-radius: 8px 8px 0 0">
-          <v-icon class="mr-2" color="green" size="small">mdi-console</v-icon>
-          <span class="text-body-2" style="color:#ccc; font-family:monospace">
-            สถานะ{{ searchLoading ? ' — กำลังประมวลผล...' : ' — เสร็จสิ้น' }}
-          </span>
-          <v-spacer />
-          <span v-if="searchSummary" class="text-caption" style="color:#888; font-family:monospace">
-            screenshot {{ searchSummary.screenshotOk }}/{{ searchSummary.total }} · extract {{ searchSummary.extractOk }}/{{ searchSummary.total }}
-          </span>
-        </v-card-title>
-        <div
-          ref="searchTerminalEl"
-          class="terminal-box"
-        >
-          <div v-if="searchLoading && searchLogs.length === 0" style="color:#666">รอการตอบสนอง...</div>
-          <div
-            v-for="(line, i) in searchLogs.slice(-15)"
-            :key="i"
-            :style="{ color: logColor(line.level), lineHeight: '1.7' }"
-          >
-            <span style="color:#555">{{ formatLogTime(line.ts) }}</span>
-            <span :style="{ color: logLevelColor(line.level), marginLeft:'6px', marginRight:'6px' }">[{{ line.level.toUpperCase() }}]</span>
-            <span>{{ line.msg }}</span>
-            <span v-if="line.data" style="color:#666; margin-left:6px">{{ JSON.stringify(line.data) }}</span>
+          <div class="d-flex align-center gap-2 mr-2" @click.stop>
+            <span class="text-caption text-medium-emphasis">{{ grp.sources.filter(s => s.apiRoute).length }}/{{ grp.sources.length }} แหล่งพร้อมใช้</span>
+            <v-chip v-if="grp.running" size="x-small" color="warning" variant="tonal">กำลังค้นหา...</v-chip>
+            <v-chip
+              v-else-if="Object.values(grp.runs).some(r => r.done)"
+              size="x-small" color="primary" variant="tonal"
+            >
+              {{ Object.values(grp.runs).reduce((n, r) => n + r.results.flatMap(res => res.items).length, 0) }} รายการ
+            </v-chip>
           </div>
-          <div v-if="searchLoading" style="color:#4ec9b0">█</div>
-        </div>
-      </v-card>
+        </v-expansion-panel-title>
 
-      <!-- Combined results table -->
-      <v-card rounded="lg" v-if="allExtractedItems.length > 0">
-        <v-card-title class="py-3 px-4 d-flex align-center">
-          <v-icon class="mr-2">mdi-table</v-icon>
-          ผลลัพธ์รวม ({{ allExtractedItems.length }} รายการ)
-          <v-spacer />
-          <v-btn size="small" variant="tonal" prepend-icon="mdi-download" @click="downloadJson(allExtractedItemsForExport)">JSON</v-btn>
-        </v-card-title>
-        <v-divider />
-        <v-data-table
-          :headers="searchTableHeaders"
-          :items="allExtractedItems"
-          density="compact"
-          class="text-body-2"
-        >
-          <template #[`item._screenshot`]="{ item }">
-            <v-img
-              v-if="item._screenshot"
-              :src="`data:image/jpeg;base64,${item._screenshot}`"
-              width="120"
-              height="80"
-              cover
-              class="my-1 rounded cursor-pointer"
-              @click="lightboxSrc = `data:image/jpeg;base64,${item._screenshot}`; lightboxOpen = true"
-            />
-            <span v-else class="text-medium-emphasis text-caption">—</span>
-          </template>
-        </v-data-table>
-      </v-card>
-      <ImageLightbox v-model="lightboxOpen" :src="lightboxSrc" />
-    </template>
-
-    <!-- ══════════════ TAB: AuctionHouse ══════════════ -->
-    <template v-if="activeTab === 'auctionhouse'">
-      <v-card class="mb-4" rounded="lg">
-        <v-card-text>
-          <v-row dense align="center">
-            <v-col cols="12" md="6">
-              <v-text-field
-                v-model="ahQuery"
-                label="ค้นหาบน AuctionHouse"
-                placeholder="เช่น Rolex Daytona"
-                prepend-inner-icon="mdi-magnify"
-                variant="outlined"
-                density="compact"
-                hide-details
-                @keyup.enter="runAhSearch"
-              />
-            </v-col>
-            <v-col cols="6" md="2">
-              <v-select
-                v-model="ahCategoryId"
-                :items="categories"
-                item-title="label"
-                item-value="id"
-                label="หมวด"
-                variant="outlined"
-                density="compact"
-                hide-details
-              />
-            </v-col>
-            <v-col cols="6" md="2">
-              <v-select
-                v-model="ahLimit"
-                :items="[3, 5, 10]"
-                label="จำนวน"
-                variant="outlined"
-                density="compact"
-                hide-details
-              />
-            </v-col>
-            <v-col cols="12" md="2" class="d-flex align-center">
-              <v-btn
-                color="primary"
-                block
-                :loading="ahLoading"
-                :disabled="!ahQuery.trim()"
-                @click="runAhSearch"
+        <v-expansion-panel-text class="pa-0">
+          <!-- Query list + limit -->
+          <v-card-text class="pb-2">
+            <v-row dense align="center" class="mb-2">
+              <v-col cols="12" md="8">
+                <v-text-field
+                  v-model="grp.newQuery"
+                  :label="`เพิ่มสินค้าค้นหา ${grp.label}`"
+                  prepend-inner-icon="mdi-plus"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  :disabled="grp.running"
+                  @keyup.enter="addQuery(grp)"
+                >
+                  <template #append-inner>
+                    <v-btn
+                      size="x-small"
+                      variant="tonal"
+                      :disabled="!grp.newQuery.trim() || grp.running"
+                      @click.stop="addQuery(grp)"
+                    >
+                      เพิ่ม
+                    </v-btn>
+                  </template>
+                </v-text-field>
+              </v-col>
+              <v-col cols="6" md="2">
+                <v-select
+                  v-model="grp.limit"
+                  :items="[3, 5, 10]"
+                  label="จำนวน/แหล่ง/คำ"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  :disabled="grp.running"
+                />
+              </v-col>
+              <v-col cols="6" md="2" class="d-flex align-center">
+                <v-btn
+                  color="primary"
+                  block
+                  :loading="grp.running"
+                  :disabled="grp.queries.length === 0 || !grp.sources.some(s => s.apiRoute && grp.enabled[s.name])"
+                  prepend-icon="mdi-play"
+                  @click="runGroup(grp)"
+                >
+                  ค้นหา
+                </v-btn>
+              </v-col>
+            </v-row>
+            <!-- Query chips -->
+            <div v-if="grp.queries.length > 0" class="d-flex flex-wrap gap-1">
+              <v-chip
+                v-for="(q, qi) in grp.queries"
+                :key="qi"
+                size="small"
+                closable
+                :disabled="grp.running"
+                @click:close="grp.queries.splice(qi, 1)"
               >
-                <v-icon start>mdi-magnify</v-icon>
-                ค้นหา
-              </v-btn>
-            </v-col>
-          </v-row>
-        </v-card-text>
-      </v-card>
+                {{ q }}
+              </v-chip>
+            </div>
+            <p v-else class="text-caption text-medium-emphasis mb-0">ยังไม่มีรายการค้นหา</p>
+          </v-card-text>
 
-      <v-alert v-if="ahError" type="error" class="mb-4" closable @click:close="ahError = ''">{{ ahError }}</v-alert>
+          <!-- Source list -->
+          <v-divider />
+          <v-list density="compact" class="py-0">
+            <template v-for="(src, si) in grp.sources" :key="src.name">
+              <v-divider v-if="si > 0" />
+              <v-list-item class="py-2">
+                <template #prepend>
+                  <span class="text-caption text-medium-emphasis mr-2" style="min-width:20px">{{ si + 1 }}.</span>
+                  <v-checkbox-btn
+                    v-if="src.apiRoute"
+                    v-model="grp.enabled[src.name]"
+                    :disabled="grp.running"
+                    density="compact"
+                    hide-details
+                    class="mr-1"
+                  />
+                  <v-icon v-else size="small" color="grey" class="mr-3">mdi-clock-outline</v-icon>
+                </template>
 
-      <!-- Bot-blocked fallback: show search page screenshot -->
-      <v-card class="mb-4" rounded="lg" v-if="ahSearchPageScreenshot">
-        <v-card-title class="py-3 px-4 text-body-1 text-warning">
-          <v-icon class="mr-2" color="warning">mdi-shield-alert</v-icon>
-          Bot protection — ภาพหน้า search
-        </v-card-title>
-        <v-divider />
-        <v-img
-          :src="`data:image/jpeg;base64,${ahSearchPageScreenshot}`"
-          max-height="400"
-          contain
-          class="bg-grey-lighten-4"
-        />
-      </v-card>
+                <v-list-item-title class="text-body-2 d-flex align-center">
+                  <span>{{ src.name }}</span>
+                  <v-chip v-if="src.apiRoute" size="x-small" color="success" variant="tonal" class="ml-2">พร้อมใช้</v-chip>
+                  <v-chip v-else size="x-small" color="grey" variant="tonal" class="ml-2">กำลังพัฒนา</v-chip>
+                  <v-progress-circular v-if="grp.runs[src.name]?.loading" indeterminate size="14" width="2" class="ml-2" />
+                  <v-chip v-else-if="srcExtracted(grp, src.name).length > 0" size="x-small" color="primary" variant="tonal" class="ml-2">
+                    {{ srcExtracted(grp, src.name).length }} รายการ
+                  </v-chip>
+                  <v-chip v-else-if="grp.runs[src.name]?.error" size="x-small" color="error" variant="tonal" class="ml-2">error</v-chip>
+                </v-list-item-title>
+                <v-list-item-subtitle class="text-caption">{{ src.url }}</v-list-item-subtitle>
 
-      <!-- Terminal log -->
-      <v-card class="mb-4" rounded="lg" v-if="ahLogs.length > 0 || ahLoading">
-        <v-card-title class="py-2 px-4 d-flex align-center" style="background:#1e1e1e; border-radius: 8px 8px 0 0">
-          <v-icon class="mr-2" color="green" size="small">mdi-console</v-icon>
-          <span class="text-body-2" style="color:#ccc; font-family:monospace">
-            สถานะ{{ ahLoading ? ' — กำลังประมวลผล...' : ' — เสร็จสิ้น' }}
-          </span>
+                <template #append>
+                  <v-btn
+                    v-if="grp.runs[src.name]"
+                    size="small"
+                    variant="tonal"
+                    prepend-icon="mdi-console"
+                    @click.stop="openDetail(grp, src.name)"
+                  >
+                    ดูรายละเอียด
+                  </v-btn>
+                </template>
+              </v-list-item>
+            </template>
+          </v-list>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
+    </v-expansion-panels>
+
+    <ImageLightbox v-model="lightboxOpen" :src="lightboxSrc" />
+
+    <!-- ── Source detail dialog ── -->
+    <v-dialog v-model="detailOpen" fullscreen transition="dialog-bottom-transition">
+      <v-card v-if="detailRun">
+        <!-- Toolbar -->
+        <v-toolbar color="surface" density="compact">
+          <v-btn icon="mdi-close" @click="detailOpen = false" />
+          <v-toolbar-title>
+            {{ detailSrcName }}
+            <span class="text-caption text-medium-emphasis ml-2">{{ detailGrpLabel }}</span>
+          </v-toolbar-title>
           <v-spacer />
-          <span v-if="ahSummary" class="text-caption" style="color:#888; font-family:monospace">
-            screenshot {{ ahSummary.screenshotOk }}/{{ ahSummary.total }} · extract {{ ahSummary.extractOk }}/{{ ahSummary.total }}
+          <span v-if="detailRun.summary" class="text-caption text-medium-emphasis mr-4">
+            screenshot {{ detailRun.summary.screenshotOk }}/{{ detailRun.summary.total }}
+            · extract {{ detailRun.summary.extractOk }}/{{ detailRun.summary.total }}
           </span>
-        </v-card-title>
-        <div
-          ref="ahTerminalEl"
-          class="terminal-box"
-        >
-          <div v-if="ahLoading && ahLogs.length === 0" style="color:#666">รอการตอบสนอง...</div>
-          <div
-            v-for="(line, i) in ahLogs.slice(-15)"
-            :key="i"
-            :style="{ color: logColor(line.level), lineHeight: '1.7' }"
-          >
-            <span style="color:#555">{{ formatLogTime(line.ts) }}</span>
-            <span :style="{ color: logLevelColor(line.level), marginLeft:'6px', marginRight:'6px' }">[{{ line.level.toUpperCase() }}]</span>
-            <span>{{ line.msg }}</span>
-            <span v-if="line.data" style="color:#666; margin-left:6px">{{ JSON.stringify(line.data) }}</span>
-          </div>
-          <div v-if="ahLoading" style="color:#4ec9b0">█</div>
-        </div>
-      </v-card>
+          <v-chip v-if="detailRun.loading" size="small" color="warning" variant="tonal" class="mr-2">กำลังประมวลผล...</v-chip>
+          <v-btn
+            v-if="detailExtracted.length > 0"
+            size="small"
+            variant="tonal"
+            prepend-icon="mdi-download"
+            class="mr-2"
+            @click="downloadJson(detailExtracted.map(({_screenshot:_s,...r})=>r))"
+          >JSON</v-btn>
+        </v-toolbar>
 
-      <!-- Combined results table -->
-      <v-card rounded="lg" v-if="ahAllItems.length > 0">
-        <v-card-title class="py-3 px-4 d-flex align-center">
-          <v-icon class="mr-2">mdi-table</v-icon>
-          ผลลัพธ์รวม ({{ ahAllItems.length }} รายการ)
-          <v-spacer />
-          <v-btn size="small" variant="tonal" prepend-icon="mdi-download" @click="downloadJson(ahAllItemsForExport)">JSON</v-btn>
-        </v-card-title>
-        <v-divider />
-        <v-data-table
-          :headers="ahTableHeaders"
-          :items="ahAllItems"
-          density="compact"
-          class="text-body-2"
-        >
-          <template #[`item._screenshot`]="{ item }">
-            <v-img
-              v-if="item._screenshot"
-              :src="`data:image/jpeg;base64,${item._screenshot}`"
-              width="120"
-              height="80"
-              cover
-              class="my-1 rounded cursor-pointer"
-              @click="lightboxSrc = `data:image/jpeg;base64,${item._screenshot}`; lightboxOpen = true"
-            />
-            <span v-else class="text-medium-emphasis text-caption">—</span>
+        <v-container fluid class="pa-4" style="height: calc(100vh - 48px); display:flex; flex-direction:column; gap:16px; overflow:auto">
+          <!-- Terminal -->
+          <template v-if="detailRun.logs.length > 0 || detailRun.loading">
+            <div>
+              <div class="d-flex align-center px-3 py-1 rounded-t" style="background:#1e1e1e">
+                <v-icon color="green" size="x-small" class="mr-1">mdi-console</v-icon>
+                <span class="text-caption" style="color:#ccc; font-family:monospace">terminal</span>
+              </div>
+              <div
+                class="terminal-box rounded-b"
+                ref="detailTermEl"
+                style="height:320px"
+              >
+                <div v-if="detailRun.loading && detailRun.logs.length === 0" style="color:#666">รอการตอบสนอง...</div>
+                <div
+                  v-for="(line, li) in detailRun.logs"
+                  :key="li"
+                  :style="{ color: logColor(line.level), lineHeight: '1.7' }"
+                >
+                  <span style="color:#555">{{ formatLogTime(line.ts) }}</span>
+                  <span :style="{ color: logLevelColor(line.level), marginLeft:'6px', marginRight:'6px' }">[{{ line.level.toUpperCase() }}]</span>
+                  <span>{{ line.msg }}</span>
+                  <span v-if="line.data" style="color:#666; margin-left:6px">{{ JSON.stringify(line.data) }}</span>
+                </div>
+                <div v-if="detailRun.loading" style="color:#4ec9b0">█</div>
+              </div>
+            </div>
           </template>
-        </v-data-table>
+
+          <!-- Bot-block screenshot -->
+          <v-img
+            v-if="detailRun.searchPageScreenshot"
+            :src="`data:image/jpeg;base64,${detailRun.searchPageScreenshot}`"
+            max-height="360"
+            contain
+            class="bg-grey-lighten-4 rounded"
+          />
+
+          <!-- Error -->
+          <v-alert v-if="detailRun.error" type="error" density="compact" :text="detailRun.error" />
+
+          <!-- Results table -->
+          <v-data-table
+            v-if="detailExtracted.length > 0"
+            :headers="detailHeaders"
+            :items="detailExtracted"
+            density="compact"
+            class="text-body-2"
+            style="flex:1"
+          >
+            <template #[`item._screenshot`]="{ item }">
+              <v-img
+                v-if="item._screenshot"
+                :src="`data:image/jpeg;base64,${item._screenshot}`"
+                width="100"
+                height="70"
+                cover
+                class="my-1 rounded cursor-pointer"
+                @click="lightboxSrc = `data:image/jpeg;base64,${item._screenshot}`; lightboxOpen = true"
+              />
+              <span v-else class="text-medium-emphasis text-caption">—</span>
+            </template>
+          </v-data-table>
+        </v-container>
       </v-card>
-      <ImageLightbox v-model="lightboxOpen" :src="lightboxSrc" />
-    </template>
+    </v-dialog>
   </v-container>
 </template>
 
 <script setup lang="ts">
-// ── Shared ────────────────────────────────────────────────────────────────────
-const activeTab = useState<'single' | 'chrono24' | 'auctionhouse'>('idx-activeTab', () => 'single')
-const lightboxOpen = ref(false)
-const lightboxSrc = ref('')
-
-const categories = [
-  { id: '103', label: 'นาฬิกา' },
-  { id: '106', label: 'พระ/วัตถุมงคล' },
-  { id: '107', label: 'สินค้าไอที' },
-  { id: '108', label: 'แบรนเนม' },
-  { id: '109', label: 'โน้ตบุ๊ก/แท็บเล็ต' },
-  { id: '110', label: 'แว่นตา' },
-  { id: '111', label: 'เครื่องมือช่าง' },
-  { id: '112', label: 'สมาร์ทโฟน' },
-]
-
-function tableHeaders(rows: Record<string, unknown>[]) {
-  if (rows.length === 0) return []
-  return Object.keys(rows[0]).map((k) => ({ title: k, key: k, sortable: true }))
-}
-
-function downloadJson(data: unknown) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `extracted_${Date.now()}.json`
-  a.click()
-}
-
-// ── Single URL ─────────────────────────────────────────────────────────────────
-const url = useState('idx-url', () => '')
-const categoryId = useState('idx-categoryId', () => '103')
-const screenshot = useState('idx-screenshot', () => '')
-const screenshotMime = useState('idx-screenshotMime', () => 'image/jpeg')
-const screenshotLoading = ref(false)
-const extractLoading = ref(false)
-const error = useState('idx-error', () => '')
-const items = useState<Record<string, unknown>[]>('idx-items', () => [])
-const fileInput = ref<HTMLInputElement>()
-const useCustomTemplate = useState('idx-useCustomTemplate', () => false)
-const customFields = useState<{ key: string; desc: string }[]>('idx-customFields', () => [
-  { key: 'title', desc: 'ชื่อสินค้า' },
-  { key: 'price', desc: 'ราคา (ตัวเลขบาท) | null' },
-  { key: 'condition', desc: '"new" | "used" | "unknown" | null' },
-])
-
-async function takeScreenshot() {
-  screenshotLoading.value = true
-  error.value = ''
-  screenshot.value = ''
-  try {
-    const res = await $fetch<{ base64: string; mimeType: string }>('/api/screenshot', {
-      method: 'POST',
-      body: { url: url.value },
-    })
-    screenshot.value = res.base64
-    screenshotMime.value = res.mimeType
-    await extractData()
-  } catch (e: unknown) {
-    error.value = (e as Error).message ?? 'ถ่ายรูปไม่สำเร็จ'
-  } finally {
-    screenshotLoading.value = false
-  }
-}
-
-function triggerUpload() { fileInput.value?.click() }
-
-function onFileUpload(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  screenshotMime.value = file.type
-  const reader = new FileReader()
-  reader.onload = () => {
-    screenshot.value = (reader.result as string).split(',')[1]
-  }
-  reader.readAsDataURL(file)
-}
-
-async function extractData() {
-  extractLoading.value = true
-  error.value = ''
-  items.value = []
-  try {
-    const template = useCustomTemplate.value
-      ? Object.fromEntries(customFields.value.filter((r) => r.key).map((r) => [r.key, r.desc]))
-      : undefined
-    const res = await $fetch<{ items: Record<string, unknown>[]; raw?: string }>('/api/extract', {
-      method: 'POST',
-      body: { base64: screenshot.value, mimeType: screenshotMime.value, categoryId: categoryId.value, template },
-    })
-    items.value = res.items
-    if (res.raw) error.value = 'AI ส่งข้อมูลมาแต่ parse JSON ไม่ได้: ' + res.raw.slice(0, 200)
-  } catch (e: unknown) {
-    error.value = (e as Error).message ?? 'ดึงข้อมูลไม่สำเร็จ'
-  } finally {
-    extractLoading.value = false
-  }
-}
-
-// ── Chrono24 Search ────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 interface ItemResult {
   index: number
   url: string
@@ -504,19 +261,90 @@ interface ItemResult {
   error?: string
 }
 
+interface LogLine { ts: string; level: string; msg: string; data?: unknown }
+interface Summary { total: number; screenshotOk: number; extractOk: number }
 
-const searchQuery = useState('idx-searchQuery', () => '')
-const searchCategoryId = useState('idx-searchCategoryId', () => '103')
-const searchLimit = useState('idx-searchLimit', () => 5)
-const searchLoading = ref(false)
-const searchError = useState('idx-searchError', () => '')
-const searchResults = useState<ItemResult[]>('idx-searchResults', () => [])
-const searchSummary = useState<{ total: number; screenshotOk: number; extractOk: number } | null>('idx-searchSummary', () => null)
-const searchLogs = useState<{ ts: string; level: string; msg: string; data?: unknown }[]>('idx-searchLogs', () => [])
-const searchTerminalEl = ref<HTMLElement>()
+interface SourceRun {
+  loading: boolean
+  done: boolean
+  results: ItemResult[]
+  logs: LogLine[]
+  summary: Summary | null
+  error: string
+  searchPageScreenshot: string
+}
 
-function scrollTerminal(el?: HTMLElement) {
-  nextTick(() => { if (el) el.scrollTop = el.scrollHeight })
+interface SourceDef {
+  name: string
+  url: string
+  apiRoute?: string
+}
+
+interface CategoryGroup {
+  label: string
+  ids: string[]
+  sources: SourceDef[]
+  queries: string[]
+  newQuery: string
+  limit: number
+  running: boolean
+  enabled: Record<string, boolean>
+  runs: Record<string, SourceRun>
+}
+
+// ── Shared ─────────────────────────────────────────────────────────────────────
+const lightboxOpen = ref(false)
+const lightboxSrc = ref('')
+
+const openPanels = ref<number[]>([0, 1, 2, 3, 4])
+
+// ── Source detail dialog ──────────────────────────────────────────────────────
+const detailOpen = ref(false)
+const detailGrpLabel = ref('')
+const detailSrcName = ref('')
+const detailTermEl = ref<HTMLElement>()
+
+const detailRun = computed(() => {
+  if (!detailGrpLabel.value || !detailSrcName.value) return null
+  const grp = categoryGroups.value.find((g: any) => g.label === detailGrpLabel.value)
+  return grp?.runs[detailSrcName.value] ?? null
+})
+
+const detailExtracted = computed(() => {
+  if (!detailRun.value) return []
+  const grp = categoryGroups.value.find((g: any) => g.label === detailGrpLabel.value)
+  if (!grp) return []
+  return srcExtracted(grp, detailSrcName.value)
+})
+
+const detailHeaders = computed(() => {
+  if (detailExtracted.value.length === 0) return []
+  const dataKeys = Object.keys(detailExtracted.value[0]).filter((k) => k !== '_screenshot' && k !== '_source')
+  return [
+    { title: 'รูป', key: '_screenshot', sortable: false, width: 116 },
+    ...dataKeys.map((k) => ({ title: k, key: k, sortable: true })),
+    { title: 'ไฟล์', key: '_source', sortable: false },
+  ]
+})
+
+function openDetail(grp: any, srcName: string) {
+  detailGrpLabel.value = grp.label
+  detailSrcName.value = srcName
+  detailOpen.value = true
+}
+
+watch([detailOpen, () => detailRun.value?.logs.length], async () => {
+  if (!detailOpen.value || !detailTermEl.value) return
+  await nextTick()
+  detailTermEl.value.scrollTop = detailTermEl.value.scrollHeight
+})
+
+function downloadJson(data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `extracted_${Date.now()}.json`
+  a.click()
 }
 
 function formatLogTime(ts: string) {
@@ -531,72 +359,121 @@ function logLevelColor(level: string) {
   return level === 'error' ? '#f44747' : level === 'warn' ? '#ce9178' : '#4ec9b0'
 }
 
-// Each row includes _screenshot (base64) for table display and _source for reference
-const allExtractedItems = computed(() =>
-  searchResults.value.flatMap((r) =>
-    r.items.map((item) => ({ _screenshot: r.base64 ?? '', _source: r.filename ?? r.url, ...item }))
+// ── Category group definitions ─────────────────────────────────────────────────
+function makeRun(): SourceRun {
+  return { loading: false, done: false, results: [], logs: [], summary: null, error: '', searchPageScreenshot: '' }
+}
+
+function makeGroup(label: string, ids: string[], sources: SourceDef[]): CategoryGroup {
+  const enabled: Record<string, boolean> = {}
+  sources.forEach((s) => { enabled[s.name] = !!s.apiRoute })
+  return { label, ids, sources, queries: [], newQuery: '', limit: 5, running: false, enabled, runs: {} }
+}
+
+function addQuery(grp: CategoryGroup) {
+  const q = grp.newQuery.trim()
+  if (!q || grp.queries.includes(q)) return
+  grp.queries.push(q)
+  grp.newQuery = ''
+}
+
+const categoryGroups = ref<CategoryGroup[]>([
+  makeGroup('นาฬิกา', ['103'], [
+    { name: 'StarBuyers Global Auction', url: 'https://www.starbuyers-global-auction.com/login' },
+    { name: 'Chrono24', url: 'https://www.chrono24.com', apiRoute: '/api/chrono24-search' },
+    { name: 'Auction House', url: 'https://www.auctionhouse.co.th', apiRoute: '/api/auctionhouse-search' },
+    { name: 'Radium Watch', url: 'https://www.radiumwatch.com' },
+    { name: 'Siam Watch Club', url: 'https://www.siamwatchclub.com' },
+    { name: 'Komehyo (นาฬิกา)', url: 'https://www.komehyo.co.th/th/product-list/?product_type=2725' },
+  ]),
+  makeGroup('พระ/วัตถุมงคล', ['106'], [
+    { name: 'Thaprachan', url: 'https://www.thaprachan.com/' },
+    { name: 'Wutdychonburi', url: 'https://wutdychonburi.com/' },
+    { name: 'Prapantip', url: 'https://www.prapantip.com/amulet/' },
+    { name: 'G-Pra', url: 'https://www.g-pra.com/' },
+    { name: 'UAmulet', url: 'https://www.uamulet.com/' },
+  ]),
+  makeGroup('สินค้าไอที / โน้ตบุ๊ก / สมาร์ทโฟน', ['107', '109', '112'], [
+    { name: 'ShopBKK', url: 'https://www.shopbkk.com' },
+    { name: 'CompAsia', url: 'https://www.compasia.co.th' },
+    { name: 'Kaidee', url: 'https://www.kaidee.com' },
+    { name: 'Pantipmarket (Mobile)', url: 'https://www.pantipmarket.com' },
+    { name: '108 Accessory', url: 'http://www.108accessory.com/' },
+  ]),
+  makeGroup('แบรนเนม / แว่นตา', ['108', '110'], [
+    { name: 'Komehyo', url: 'https://www.komehyo.co.th/' },
+    { name: 'Sasom', url: 'https://sasom.co.th/th' },
+    { name: 'Moppet Brandname', url: 'https://www.moppetbrandname.com/' },
+    { name: 'SF Brandname', url: 'https://sfbrandname.com/' },
+    { name: 'Brandname Voyage', url: 'https://brandnamevoyage.com/' },
+  ]),
+  makeGroup('เครื่องมือช่าง', ['111'], [
+    { name: 'Kaidee (เครื่องมือช่าง)', url: 'https://www.kaidee.com/c296-appliances_decoration-accessories_and_tool_suppliers' },
+    { name: 'Shopee (เครื่องมือช่าง)', url: 'https://shopee.co.th/search?filters=9&keyword=%E0%B9%80%E0%B8%84%E0%B8%A3%E0%B8%B7%E0%B9%88%E0%B8%AD%E0%B8%87%E0%B8%A1%E0%B8%B7%E0%B8%AD%E0%B8%8A%E0%B9%88%E0%B8%B2%E0%B8%87&noCorrection=true&page=0' },
+    { name: 'Truck2Hand', url: 'https://www.truck2hand.com/category/cat_equipment/' },
+    { name: 'Facebook กลุ่ม 1', url: 'https://www.facebook.com/groups/198988708155849/' },
+    { name: 'Facebook กลุ่ม 2', url: 'https://www.facebook.com/groups/4392804640788959/' },
+    { name: 'Facebook กลุ่ม 3', url: 'https://www.facebook.com/groups/455495127955260/' },
+  ]),
+])
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function srcExtracted(grp: CategoryGroup, srcName: string) {
+  const run = grp.runs[srcName]
+  if (!run) return []
+  const multiQuery = grp.queries.length > 1
+  return run.results.flatMap((r) =>
+    r.items.map((item) => ({
+      _screenshot: r.base64 ?? '',
+      ...(multiQuery ? { _query: (r as ItemResult & { _query?: string })._query ?? '' } : {}),
+      _source: r.filename ?? r.url,
+      ...item,
+    }))
   )
-)
+}
 
-// Export version without the heavy base64 blob
-const allExtractedItemsForExport = computed(() =>
-  allExtractedItems.value.map(({ _screenshot: _s, ...rest }) => rest)
-)
-
-const searchTableHeaders = computed(() => {
-  if (allExtractedItems.value.length === 0) return []
-  const dataKeys = Object.keys(allExtractedItems.value[0]).filter((k) => k !== '_screenshot' && k !== '_source')
+function srcHeaders(grp: CategoryGroup, srcName: string) {
+  const rows = srcExtracted(grp, srcName)
+  if (rows.length === 0) return []
+  const dataKeys = Object.keys(rows[0]).filter((k) => k !== '_screenshot' && k !== '_source')
   return [
-    { title: 'รูป', key: '_screenshot', sortable: false, width: 136 },
+    { title: 'รูป', key: '_screenshot', sortable: false, width: 116 },
     ...dataKeys.map((k) => ({ title: k, key: k, sortable: true })),
     { title: 'ไฟล์', key: '_source', sortable: false },
   ]
-})
+}
 
-// ── AuctionHouse Search ───────────────────────────────────────────────────────
+// ── Terminal refs ──────────────────────────────────────────────────────────────
+const termRefs = ref<Record<string, Element | null>>({})
+function setTermRef(groupLabel: string, srcName: string, el: unknown) {
+  termRefs.value[`${groupLabel}:${srcName}`] = el as Element | null
+}
+function scrollTerm(groupLabel: string, srcName: string) {
+  nextTick(() => {
+    const el = termRefs.value[`${groupLabel}:${srcName}`]
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
 
-const ahQuery = useState('idx-ahQuery', () => '')
-const ahCategoryId = useState('idx-ahCategoryId', () => '103')
-const ahLimit = useState('idx-ahLimit', () => 5)
-const ahLoading = ref(false)
-const ahError = useState('idx-ahError', () => '')
-const ahResults = useState<ItemResult[]>('idx-ahResults', () => [])
-const ahSummary = useState<{ total: number; screenshotOk: number; extractOk: number } | null>('idx-ahSummary', () => null)
-const ahSearchPageScreenshot = useState('idx-ahSearchPageScreenshot', () => '')
-const ahLogs = useState<{ ts: string; level: string; msg: string; data?: unknown }[]>('idx-ahLogs', () => [])
-const ahTerminalEl = ref<HTMLElement>()
+// ── API mapping ────────────────────────────────────────────────────────────────
+const API_CATEGORY_MAP: Record<string, string> = {
+  '/api/chrono24-search': '103',
+  '/api/auctionhouse-search': '103',
+}
 
-const ahAllItems = computed(() =>
-  ahResults.value.flatMap((r) =>
-    r.items.map((item) => ({ _screenshot: r.base64 ?? '', _source: r.filename ?? r.url, ...(item as Record<string, unknown>) }))
-  )
-)
-const ahAllItemsForExport = computed(() =>
-  ahAllItems.value.map(({ _screenshot: _s, ...rest }) => rest)
-)
-const ahTableHeaders = computed(() => {
-  if (ahAllItems.value.length === 0) return []
-  const dataKeys = Object.keys(ahAllItems.value[0]).filter((k) => k !== '_screenshot' && k !== '_source')
-  return [
-    { title: 'รูป', key: '_screenshot', sortable: false, width: 136 },
-    ...dataKeys.map((k) => ({ title: k, key: k, sortable: true })),
-    { title: 'ไฟล์', key: '_source', sortable: false },
-  ]
-})
+async function runSourceQuery(grp: CategoryGroup, src: SourceDef, query: string, qi: number) {
+  const run = grp.runs[src.name]
+  const categoryId = API_CATEGORY_MAP[src.apiRoute!] ?? grp.ids[0]
+  const prefix = grp.queries.length > 1 ? `[${qi + 1}/${grp.queries.length}] ` : ''
 
-async function runAhSearch() {
-  if (!ahQuery.value.trim()) return
-  ahLoading.value = true
-  ahError.value = ''
-  ahResults.value = []
-  ahSummary.value = null
-  ahSearchPageScreenshot.value = ''
-  ahLogs.value = []
+  run.logs.push({ ts: new Date().toISOString(), level: 'info', msg: `${prefix}ค้นหา: ${query}` })
+  scrollTerm(grp.label, src.name)
+
   try {
-    const res = await fetch('/api/auctionhouse-search', {
+    const res = await fetch(src.apiRoute!, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: ahQuery.value.trim(), categoryId: ahCategoryId.value, limit: ahLimit.value }),
+      body: JSON.stringify({ query, categoryId, limit: grp.limit }),
       signal: AbortSignal.timeout(300_000),
     })
     if (!res.body) throw new Error('No response stream')
@@ -613,60 +490,68 @@ async function runAhSearch() {
         if (!line.trim()) continue
         try {
           const ev = JSON.parse(line)
-          if (ev.type === 'log') { ahLogs.value.push(ev); scrollTerminal(ahTerminalEl.value) }
-          else if (ev.type === 'result') ahResults.value.push(ev)
-          else if (ev.type === 'searchpage') ahSearchPageScreenshot.value = ev.base64
-          else if (ev.type === 'done') { ahSummary.value = ev.summary; if (ev.error) ahError.value = ev.error }
+          if (ev.type === 'log') {
+            run.logs.push({ ...ev, msg: prefix + ev.msg })
+            scrollTerm(grp.label, src.name)
+          } else if (ev.type === 'result') {
+            run.results.push({ ...ev, _query: query })
+          } else if (ev.type === 'searchpage') {
+            run.searchPageScreenshot = ev.base64
+          } else if (ev.type === 'done') {
+            const s = ev.summary as Summary
+            if (!run.summary) {
+              run.summary = { ...s }
+            } else {
+              run.summary.total += s.total
+              run.summary.screenshotOk += s.screenshotOk
+              run.summary.extractOk += s.extractOk
+            }
+            if (ev.error) run.error = (run.error ? run.error + ' | ' : '') + `${query}: ${ev.error}`
+          }
         } catch { }
       }
     }
   } catch (e: unknown) {
-    ahError.value = (e as Error).message ?? 'ค้นหาไม่สำเร็จ'
-  } finally {
-    ahLoading.value = false
-    scrollTerminal(ahTerminalEl.value)
+    const msg = (e as Error).message ?? 'ค้นหาไม่สำเร็จ'
+    run.error = (run.error ? run.error + ' | ' : '') + `${query}: ${msg}`
+    run.logs.push({ ts: new Date().toISOString(), level: 'error', msg: `${prefix}${msg}` })
+    scrollTerm(grp.label, src.name)
   }
 }
 
-async function runSearch() {
-  if (!searchQuery.value.trim()) return
-  searchLoading.value = true
-  searchError.value = ''
-  searchResults.value = []
-  searchSummary.value = null
-  searchLogs.value = []
+async function runSource(grp: CategoryGroup, src: SourceDef) {
+  if (!src.apiRoute || grp.queries.length === 0) return
+  if (!grp.runs[src.name]) grp.runs[src.name] = makeRun()
+  const run = grp.runs[src.name]
+  run.loading = true
+  run.done = false
+  run.results = []
+  run.logs = []
+  run.summary = null
+  run.error = ''
+  run.searchPageScreenshot = ''
+
   try {
-    const res = await fetch('/api/chrono24-search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: searchQuery.value.trim(), categoryId: searchCategoryId.value, limit: searchLimit.value }),
-      signal: AbortSignal.timeout(300_000),
-    })
-    if (!res.body) throw new Error('No response stream')
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop() ?? ''
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try {
-          const ev = JSON.parse(line)
-          if (ev.type === 'log') { searchLogs.value.push(ev); scrollTerminal(searchTerminalEl.value) }
-          else if (ev.type === 'result') searchResults.value.push(ev)
-          else if (ev.type === 'done') { searchSummary.value = ev.summary; if (ev.error) searchError.value = ev.error }
-        } catch { }
-      }
+    for (let qi = 0; qi < grp.queries.length; qi++) {
+      await runSourceQuery(grp, src, grp.queries[qi], qi)
     }
-  } catch (e: unknown) {
-    searchError.value = (e as Error).message ?? 'ค้นหาไม่สำเร็จ'
   } finally {
-    searchLoading.value = false
-    scrollTerminal(searchTerminalEl.value)
+    run.loading = false
+    run.done = true
+    scrollTerm(grp.label, src.name)
+  }
+}
+
+async function runGroup(grp: CategoryGroup) {
+  if (grp.queries.length === 0) return
+  grp.running = true
+  try {
+    const enabledSources = grp.sources.filter((s) => s.apiRoute && grp.enabled[s.name])
+    for (const src of enabledSources) {
+      await runSource(grp, src)
+    }
+  } finally {
+    grp.running = false
   }
 }
 </script>
@@ -676,24 +561,13 @@ async function runSearch() {
   background: #1e1e1e;
   font-family: monospace;
   font-size: 12px;
-  padding: 12px 16px;
-  height: 260px;
+  padding: 10px 14px;
   overflow-y: auto;
-  border-radius: 0 0 8px 8px;
   scrollbar-width: thin;
   scrollbar-color: #555 #2d2d2d;
 }
-.terminal-box::-webkit-scrollbar {
-  width: 6px;
-}
-.terminal-box::-webkit-scrollbar-track {
-  background: #2d2d2d;
-}
-.terminal-box::-webkit-scrollbar-thumb {
-  background: #555;
-  border-radius: 3px;
-}
-.terminal-box::-webkit-scrollbar-thumb:hover {
-  background: #777;
-}
+.terminal-box::-webkit-scrollbar { width: 6px; }
+.terminal-box::-webkit-scrollbar-track { background: #2d2d2d; }
+.terminal-box::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+.terminal-box::-webkit-scrollbar-thumb:hover { background: #777; }
 </style>
