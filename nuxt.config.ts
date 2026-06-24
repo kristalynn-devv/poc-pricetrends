@@ -1,7 +1,7 @@
 export default defineNuxtConfig({
   ssr: false,
   future: { compatibilityVersion: 4 },
-  modules: ['vuetify-nuxt-module', '@nuxtjs/google-fonts'],
+  modules: ['@pinia/nuxt', 'vuetify-nuxt-module', '@nuxtjs/google-fonts'],
   css: ['@mdi/font/css/materialdesignicons.css', '~/assets/css/global.css'],
   googleFonts: {
     families: {

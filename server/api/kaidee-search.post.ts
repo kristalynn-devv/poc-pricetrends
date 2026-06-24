@@ -1,4 +1,4 @@
-import { chromium } from 'playwright'
+﻿import { chromium } from 'playwright'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { writeFile, mkdir } from 'node:fs/promises'
@@ -149,7 +149,7 @@ export default defineEventHandler(async (event) => {
                 const dataFile = result.items.length > 0 ? await saveItems(result.items, categoryId, filename).catch(() => null) : null
                 const ts = new Date().toISOString()
                 await Promise.all([
-                  appendLog({ timestamp: ts, source: 'kaidee', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null }).catch(() => {}),
+                  appendLog({ timestamp: ts, source: 'kaidee', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null }).catch(() => {}),
                   appendResult({ timestamp: ts, source: 'kaidee', url, categoryId, screenshotFile: filename, items: result.items as Record<string, any>[], roundId, searchQuery: query }).catch((e) => emit('warn', 'appendResult failed', String(e))),
                 ])
               } catch {

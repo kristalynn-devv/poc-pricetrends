@@ -1,6 +1,7 @@
 const BASE_FIELDS: Record<string, string> = {
   price: 'ตัวเลขจำนวนเต็ม - ตัดจุลภาค (,) ออก, จุด (.) คือ decimal point ให้ปัดทิ้ง ไม่ใช่ thousands separator เช่น 1,560,000.00 → 1560000 | null',
   currency: 'สกุลเงิน เช่น THB, USD, JPY, EUR | null',
+  otherDetails: 'ข้อมูลอื่นๆ ที่เจอในหน้าแต่ไม่มีใน schema เช่น serial number, ref number, ประกัน, อุปกรณ์เสริม — เขียนเป็น free text สั้นๆ | null',
 }
 
 const FIELD_DESCRIPTIONS_BY_CATEGORY: Record<string, Record<string, string>> = {
@@ -52,14 +53,14 @@ FIELD_DESCRIPTIONS_BY_CATEGORY['110'] = FIELD_DESCRIPTIONS_BY_CATEGORY['108']
 FIELD_DESCRIPTIONS_BY_CATEGORY['112'] = FIELD_DESCRIPTIONS_BY_CATEGORY['107']
 
 export const CATEGORY_FIELDS: Record<string, string[]> = {
-  '103': ['brand', 'model', 'price', 'currency', 'condition', 'dialColor', 'caseMaterial', 'strapMaterial', 'movementType'],
-  '106': ['title', 'model', 'price', 'currency', 'material', 'moldType', 'year', 'weight'],
-  '107': ['itemType', 'brand', 'model', 'price', 'currency', 'capacity', 'condition'],
-  '108': ['itemType', 'brand', 'model', 'price', 'currency', 'year', 'condition'],
-  '109': ['itemType', 'brand', 'model', 'price', 'currency', 'capacity', 'condition'],
-  '110': ['itemType', 'brand', 'model', 'price', 'currency', 'year', 'condition'],
-  '111': ['itemType', 'brand', 'model', 'price', 'currency', 'condition'],
-  '112': ['itemType', 'brand', 'model', 'price', 'currency', 'capacity', 'condition'],
+  '103': ['brand', 'model', 'price', 'currency', 'condition', 'dialColor', 'caseMaterial', 'strapMaterial', 'movementType', 'otherDetails'],
+  '106': ['title', 'model', 'price', 'currency', 'material', 'moldType', 'year', 'weight', 'otherDetails'],
+  '107': ['itemType', 'brand', 'model', 'price', 'currency', 'capacity', 'condition', 'otherDetails'],
+  '108': ['itemType', 'brand', 'model', 'price', 'currency', 'year', 'condition', 'otherDetails'],
+  '109': ['itemType', 'brand', 'model', 'price', 'currency', 'capacity', 'condition', 'otherDetails'],
+  '110': ['itemType', 'brand', 'model', 'price', 'currency', 'year', 'condition', 'otherDetails'],
+  '111': ['itemType', 'brand', 'model', 'price', 'currency', 'condition', 'otherDetails'],
+  '112': ['itemType', 'brand', 'model', 'price', 'currency', 'capacity', 'condition', 'otherDetails'],
 }
 
 const CATEGORY_LABEL: Record<string, string> = {

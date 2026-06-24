@@ -8,6 +8,7 @@ export interface LogEntry {
   url: string
   categoryId: string | null
   searchQuery?: string
+  roundId?: string
   durationMs: number
   httpStatus: number
   screenshotFile: string | null

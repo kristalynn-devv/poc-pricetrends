@@ -65,6 +65,8 @@ Source list ทั้งหมดนิยามใน `index.vue` (`categoryGro
 
 ## Rules
 
+- **อัปเดต CLAUDE.md ทุกครั้งที่มีการเปลี่ยนแปลง** — เมื่อเพิ่ม route, utility, component, หรือเปลี่ยน architecture ให้อัปเดต CLAUDE.md ให้ตรงกับ code จริงเสมอ
+
 - **ใช้ helper กลางเสมอ** — ถ้า logic เดิมมีอยู่ใน `server/utils/` ให้ import มาใช้ อย่า copy หรือ reimplement ใหม่ในแต่ละ route:
   - stealth browser → `createStealthContext()` จาก `browserUtils.ts`
   - ปิด cookie popup → `dismissCookieBanner()` จาก `browserUtils.ts`
@@ -104,6 +106,7 @@ Source list ทั้งหมดนิยามใน `index.vue` (`categoryGro
 **Data utilities:**
 - `server/utils/sanitize.ts` — `sanitizeItems()`: coerce price เป็น integer, strip commas
 - `server/utils/resultsStore.ts` — `appendResult()` / `readDailyResults()`: เขียน/อ่าน `output/results/YYYYMMDD.jsonl`
+  - `ResultEntry` มี `roundId?` (batch run ID) และ `searchQuery?` สำหรับ group ผลลัพธ์
 
 **File naming convention:** `[YYYYMMDD]_[CategoryID]_[SourceCode].jpg`
 - บันทึกที่ `output/screenshots/`
@@ -129,13 +132,16 @@ UI ให้ผู้ใช้เพิ่ม optional fields ได้ด้ว
 
 **Logging system** (`server/utils/logger.ts`):
 - ทุก request append `LogEntry` ไปที่ `output/logs/YYYYMMDD.jsonl`
-- Fields: `timestamp`, `source`, `url`, `categoryId`, `searchQuery?`, `durationMs`, `httpStatus`, `screenshotFile`, `error`, `errorType`
+- Fields: `timestamp`, `source`, `url`, `categoryId`, `searchQuery?`, `durationMs`, `httpStatus`, `screenshotFile`, `dataFile`, `error`, `errorType`
+- `dataFile` — path ของ result JSON ที่บันทึกไว้ (ใช้ใน logs UI เพื่อ fetch extracted items)
 - `errorType`: `timeout` | `screenshot` | `extraction` | `parse` | `config`
-- UI ดู log ได้ที่ `/logs` (`app/pages/logs.vue`) — กรองตามวัน แสดง summary + error list
+- UI ดู log ได้ที่ `/logs` (`app/pages/logs.vue`) — กรองตามวัน แสดง summary + error list + ดู extracted items ใน detail dialog
 
 **Frontend components/composables ใหม่:**
 - `app/components/ScreenshotImg.vue` — แสดงภาพ screenshot พร้อม lightbox (thumbnail + full preview)
 - `app/composables/useCategoryFields.ts` — ข้อมูล required/optional fields ต่อ category (Nuxt auto-import)
+  - `getFieldOrder(categoryId)` — คืน canonical column order: required → price → currency → optional
+  - ใช้ใน `index.vue` (srcHeaders, detailHeaders) และ `entries.vue` (getColumns) เพื่อให้ลำดับ column เหมือนกันทุก source ในหมวดเดียวกัน อย่า sort ด้วย `Object.keys()` ดิบ
   - `getFieldOrder(categoryId)` — คืน canonical column order: required → price → currency → optional
   - ใช้ใน `index.vue` (srcHeaders, detailHeaders) และ `entries.vue` (getColumns) เพื่อให้ลำดับ column เหมือนกันทุก source ในหมวดเดียวกัน อย่า sort ด้วย `Object.keys()` ดิบ
 

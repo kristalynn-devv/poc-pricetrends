@@ -1,4 +1,4 @@
-import { chromium, type Browser, type BrowserContext } from 'playwright'
+﻿import { chromium, type Browser, type BrowserContext } from 'playwright'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -370,7 +370,7 @@ export default defineEventHandler(async (event) => {
             const dataFile = result.items.length > 0 ? await saveItems(result.items, categoryId, filename).catch(() => null) : null
             const ts = new Date().toISOString()
             await Promise.all([
-              appendLog({ timestamp: ts, source: 'auctionhouse', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null }).catch(() => {}),
+              appendLog({ timestamp: ts, source: 'auctionhouse', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null }).catch(() => {}),
               appendResult({ timestamp: ts, source: 'auctionhouse', url, categoryId, screenshotFile: filename, items: result.items as Record<string, any>[], roundId, searchQuery: query }).catch(() => {}),
             ])
           } finally {

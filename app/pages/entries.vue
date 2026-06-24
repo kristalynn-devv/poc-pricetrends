@@ -15,24 +15,25 @@
     <v-card rounded="lg" class="mb-4 pa-3">
       <v-row align="center" dense>
         <v-col cols="12" sm="auto">
-          <v-text-field v-model="selectedDate" type="date" label="วันที่" variant="outlined" density="compact"
-            hide-details style="min-width: 180px" @change="fetchResults" clearable />
+          <v-menu v-model="dateMenu" :close-on-content-click="false" min-width="auto">
+            <template #activator="{ props }">
+              <v-text-field :model-value="formattedDate" label="วันที่" prepend-inner-icon="mdi-calendar"
+                variant="outlined" density="compact" hide-details readonly style="min-width: 180px" v-bind="props" />
+            </template>
+            <v-date-picker v-model="datePickerDate" hide-header />
+          </v-menu>
         </v-col>
         <v-col cols="12" sm="3">
-          <v-text-field v-model="search" label="ค้นหา brand / model / keyword" prepend-inner-icon="mdi-magnify"
+          <v-text-field v-model="entriesSearch" label="ค้นหา brand / model / keyword" prepend-inner-icon="mdi-magnify"
             variant="outlined" density="compact" hide-details clearable />
         </v-col>
         <v-col cols="6" sm="2">
-          <v-select v-model="filterSrc" :items="['ทั้งหมด', ...availableSources]" label="Source" variant="outlined"
+          <v-select v-model="entriesFilterSrc" :items="['ทั้งหมด', ...entriesAvailableSources]" label="Source" variant="outlined"
             density="compact" hide-details />
         </v-col>
         <v-col cols="6" sm="2">
-          <v-select v-model="filterCat" :items="['ทั้งหมด', ...availableCategories]" label="Category" variant="outlined"
+          <v-select v-model="entriesFilterCat" :items="['ทั้งหมด', ...entriesAvailableCategories]" label="Category" variant="outlined"
             density="compact" hide-details />
-        </v-col>
-        <v-col cols="auto">
-          <v-btn color="primary" variant="tonal" prepend-icon="mdi-refresh" :loading="loading" height="40"
-            @click="fetchResults">รีเฟรช</v-btn>
         </v-col>
         <v-spacer />
         <v-col cols="auto">
@@ -42,10 +43,10 @@
       </v-row>
     </v-card>
 
-    <v-alert v-if="fetchError" type="error" class="mb-4" closable>{{ fetchError }}</v-alert>
+    <v-alert v-if="entriesFetchError" type="error" class="mb-4" closable>{{ entriesFetchError }}</v-alert>
 
     <!-- Empty state -->
-    <v-card v-if="!loading && resultEntries.length === 0" rounded="lg">
+    <v-card v-if="!entriesLoading && resultEntries.length === 0" rounded="lg">
       <v-card-text class="text-center text-disabled py-10">ไม่มีผลลัพธ์วันที่ {{ selectedDate }}</v-card-text>
     </v-card>
 
@@ -79,6 +80,8 @@
                   prepend-icon="mdi-magnify">{{ group.searchQuery }}</v-chip>
                 <v-spacer />
                 <span class="text-caption text-disabled font-weight-regular">{{ formatTime(group.timestamp) }}</span>
+                <v-btn v-if="group.screenshotFile" icon="mdi-text-box-search-outline" size="x-small" variant="text"
+                  :title="'ดู log'" @click.stop="viewLog(group)" />
                 <v-btn icon="mdi-open-in-new" size="x-small" variant="text" :href="group.url" target="_blank" />
               </v-card-title>
 
@@ -132,150 +135,97 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
-import { useCategoryFields } from '../composables/useCategoryFields';
+import { useLogsEntriesStore } from '~/stores/logsEntries'
+import { useCategoryFields } from '../composables/useCategoryFields'
 
-const route = useRoute();
+const store = useLogsEntriesStore()
+const route = useRoute()
+const router = useRouter()
 
-const CATEGORY_NAMES: Record<string, string> = {
-  '103': 'นาฬิกา',
-  '106': 'พระ / วัตถุมงคล',
-  '107': 'IT / โน้ตบุ๊ก',
-  '108': 'แบรนด์เนม',
-  '109': 'สมาร์ทโฟน',
-  '110': 'แว่นตา',
-  '111': 'เครื่องมือช่าง',
-  '112': 'อุปกรณ์ไอที',
-};
+const { CATEGORY_NAMES } = store
+const {
+  selectedDate, dateMenu, formattedDate,
+  entriesLoading, entriesFetchError, resultEntries,
+  entriesSearch, entriesFilterSrc, entriesFilterCat, selectedRound,
+  entriesAvailableSources, entriesAvailableCategories,
+  filteredGroups, rounds, flatItems,
+} = storeToRefs(store)
 
-function catLabel(id: string | null) {
-  if (!id || id === '__none__') return 'ไม่ระบุหมวด';
-  return CATEGORY_NAMES[id] ? `${CATEGORY_NAMES[id]} (${id})` : `หมวด ${id}`;
-}
+const initialDate = typeof route.query.date === 'string' ? route.query.date : null
+if (initialDate) selectedDate.value = initialDate
 
-const today = new Date().toISOString().slice(0, 10);
-const initialDate = typeof route.query.date === 'string' ? route.query.date : today;
-const selectedDate = ref(initialDate);
-const loading = ref(false);
-const fetchError = ref<string | null>(null);
-const resultEntries = ref<any[]>([]);
-
-const search = ref('');
-const filterSrc = ref('ทั้งหมด');
-const filterCat = ref('ทั้งหมด');
-const selectedRound = ref<string | null>(null);
-
-const availableSources = computed(() => [...new Set(resultEntries.value.map((e) => e.source).filter(Boolean))]);
-const availableCategories = computed(() => [...new Set(resultEntries.value.map((e) => e.categoryId).filter(Boolean))]);
-
-const filteredGroups = computed(() => {
-  return resultEntries.value
-    .filter((e) => {
-      if (filterSrc.value !== 'ทั้งหมด' && e.source !== filterSrc.value) return false;
-      if (filterCat.value !== 'ทั้งหมด' && e.categoryId !== filterCat.value) return false;
-      return true;
-    })
-    .map((e) => {
-      if (!search.value) return e;
-      const q = search.value.toLowerCase();
-      const filteredItems = e.items.filter((item: any) =>
-        Object.values(item).some((v) => String(v ?? '').toLowerCase().includes(q))
-      );
-      return filteredItems.length > 0 ? { ...e, items: filteredItems } : null;
-    })
-    .filter(Boolean);
-});
-
-const rounds = computed(() => {
-  const map = new Map<string, any[]>();
-  for (const e of filteredGroups.value) {
-    const key = (e as any).roundId ?? '__legacy__';
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(e);
-  }
-
-  return [...map.entries()]
-    .map(([roundId, entries]) => {
-      entries.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      const timestamp = entries[0].timestamp;
-      const query = entries.find((e: any) => e.searchQuery)?.searchQuery ?? '';
-
-      const catMap = new Map<string, any[]>();
-      for (const e of entries) {
-        const cat = e.categoryId ?? '__none__';
-        if (!catMap.has(cat)) catMap.set(cat, []);
-        catMap.get(cat)!.push(e);
-      }
-      const byCategory = [...catMap.entries()].map(([categoryId, catEntries]) => ({ categoryId, entries: catEntries }));
-
-      return { roundId, timestamp, query, byCategory };
-    })
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-});
+const datePickerDate = computed({
+  get: () => new Date(selectedDate.value + 'T00:00:00'),
+  set: (val: Date) => {
+    const y = val.getFullYear()
+    const m = String(val.getMonth() + 1).padStart(2, '0')
+    const d = String(val.getDate()).padStart(2, '0')
+    selectedDate.value = `${y}-${m}-${d}`
+    dateMenu.value = false
+    store.fetchResultEntries()
+  },
+})
 
 watch(rounds, (newRounds) => {
-  const targetRound = typeof route.query.round === 'string' ? route.query.round : null;
+  const targetRound = typeof route.query.round === 'string' ? route.query.round : null
   if (newRounds.length > 0) {
-    if (targetRound && newRounds.some((r) => r.roundId === targetRound)) {
-      selectedRound.value = targetRound;
-    } else if (!selectedRound.value || !newRounds.some((r) => r.roundId === selectedRound.value)) {
-      selectedRound.value = newRounds[0].roundId;
+    if (targetRound && newRounds.some(r => r.roundId === targetRound)) {
+      selectedRound.value = targetRound
+    } else if (!selectedRound.value || !newRounds.some(r => r.roundId === selectedRound.value)) {
+      selectedRound.value = newRounds[0].roundId
     }
   }
-}, { immediate: true });
+}, { immediate: true })
 
-const flatItems = computed(() => filteredGroups.value.flatMap((g: any) => g.items));
-
-const { getAllowedKeys, getFieldOrder } = useCategoryFields();
-
-function getColumns(items: any[], categoryId?: string): string[] {
-  if (!items.length) return [];
-  const allKeys = Object.keys(items[0]);
-  if (!categoryId) return allKeys;
-  const allowed = getAllowedKeys(categoryId);
-  const order = getFieldOrder(categoryId);
-  const filtered = allKeys.filter((k) => allowed.has(k));
-  return [...filtered].sort((a, b) => {
-    const ai = order.indexOf(a); const bi = order.indexOf(b);
-    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-  });
+function catLabel(id: string | null) {
+  if (!id || id === '__none__') return 'ไม่ระบุหมวด'
+  return CATEGORY_NAMES[id] ? `${CATEGORY_NAMES[id]} (${id})` : `หมวด ${id}`
 }
 
-async function fetchResults() {
-  loading.value = true;
-  fetchError.value = null;
-  const dateParam = selectedDate.value.replace(/-/g, '');
-  try {
-    const res = await fetch(`/api/results/entries?date=${dateParam}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    resultEntries.value = data.entries ?? [];
-  } catch (err: any) {
-    fetchError.value = err?.message ?? 'โหลดข้อมูลล้มเหลว';
-    resultEntries.value = [];
-  } finally {
-    loading.value = false;
-  }
+const { getAllowedKeys, getFieldOrder } = useCategoryFields()
+
+function getColumns(items: any[], categoryId?: string): string[] {
+  if (!items.length) return []
+  const allKeys = Object.keys(items[0])
+  if (!categoryId) return allKeys
+  const allowed = getAllowedKeys(categoryId)
+  const order = getFieldOrder(categoryId)
+  const filtered = allKeys.filter(k => allowed.has(k))
+  return [...filtered].sort((a, b) => {
+    const ai = order.indexOf(a); const bi = order.indexOf(b)
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+  })
 }
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 function conditionColor(c: string) {
-  if (c === 'new') return 'success';
-  if (c === 'used') return 'warning';
-  return 'grey';
+  if (c === 'new') return 'success'
+  if (c === 'used') return 'warning'
+  return 'grey'
+}
+
+function viewLog(group: any) {
+  const dateParam = selectedDate.value.replace(/-/g, '')
+  router.push(`/logs?date=${dateParam}&file=${encodeURIComponent(group.screenshotFile)}`)
 }
 
 function downloadJson() {
-  const blob = new Blob([JSON.stringify(flatItems.value, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `results_${selectedDate.value}.json`;
-  a.click();
+  const blob = new Blob([JSON.stringify(flatItems.value, null, 2)], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `results_${selectedDate.value}.json`
+  a.click()
 }
 
-onMounted(fetchResults);
+const initialRound = typeof route.query.round === 'string' ? route.query.round : null
+
+onMounted(async () => {
+  await store.fetchResultEntries()
+  if (initialRound && rounds.value.some(r => r.roundId === initialRound)) {
+    selectedRound.value = initialRound
+  }
+})
 </script>

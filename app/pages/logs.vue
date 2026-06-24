@@ -14,12 +14,13 @@
     <!-- Controls -->
     <v-row class="mb-4" align="center" dense>
       <v-col cols="12" sm="auto">
-        <v-text-field v-model="selectedDate" type="date" label="วันที่" variant="outlined" density="compact"
-          hide-details style="min-width: 180px" @change="fetchAll" clearable />
-      </v-col>
-      <v-col cols="auto">
-        <v-btn color="primary" variant="tonal" prepend-icon="mdi-refresh" :loading="loading"
-          @click="fetchAll">รีเฟรช</v-btn>
+        <v-menu v-model="dateMenu" :close-on-content-click="false" min-width="auto">
+          <template #activator="{ props }">
+            <v-text-field :model-value="formattedDate" label="วันที่" prepend-inner-icon="mdi-calendar"
+              variant="outlined" density="compact" hide-details readonly style="min-width: 180px" v-bind="props" />
+          </template>
+          <v-date-picker v-model="datePickerDate" hide-header />
+        </v-menu>
       </v-col>
       <v-spacer />
       <v-col cols="auto">
@@ -30,7 +31,7 @@
       </v-col>
     </v-row>
 
-    <v-alert v-if="fetchError" type="error" class="mb-4" closable>{{ fetchError }}</v-alert>
+    <v-alert v-if="logsFetchError" type="error" class="mb-4" closable>{{ logsFetchError }}</v-alert>
 
     <!-- ══ SUMMARY VIEW ══ -->
     <template v-if="activeView === 'summary'">
@@ -46,7 +47,7 @@
             </v-card>
           </v-col>
           <v-col cols="6" sm="3">
-            <v-card rounded="lg" variant="tonal" color="success" @click="filterStatus('success')"
+            <v-card rounded="lg" variant="tonal" color="success" @click="store.filterStatus('success')"
               class="cursor-pointer">
               <v-card-text class="text-center pa-4">
                 <div class="text-h4 font-weight-bold">{{ summary.success }}</div>
@@ -56,7 +57,7 @@
           </v-col>
           <v-col cols="6" sm="3">
             <v-card rounded="lg" variant="tonal" :color="summary.failed > 0 ? 'error' : 'grey'"
-              @click="filterStatus('failed')" class="cursor-pointer">
+              @click="store.filterStatus('failed')" class="cursor-pointer">
               <v-card-text class="text-center pa-4">
                 <div class="text-h4 font-weight-bold">{{ summary.failed }}</div>
                 <div class="text-caption mt-1">ล้มเหลว</div>
@@ -81,7 +82,7 @@
                 </thead>
                 <tbody>
                   <tr v-for="(stat, src) in summary.bySource" :key="src" class="cursor-pointer"
-                    @click="filterSource(src as string)">
+                    @click="store.filterSource(src as string)">
                     <td><v-chip size="x-small" label>{{ src }}</v-chip></td>
                     <td class="text-right">{{ stat.total }}</td>
                     <td class="text-right text-success">{{ stat.success }}</td>
@@ -109,7 +110,7 @@
                 </thead>
                 <tbody>
                   <tr v-for="(stat, cat) in summary.byCategory" :key="cat" class="cursor-pointer"
-                    @click="filterCategory(cat as string)">
+                    @click="store.filterCategory(cat as string)">
                     <td>{{ cat }}</td>
                     <td class="text-right">{{ stat.total }}</td>
                     <td class="text-right text-success">{{ stat.success }}</td>
@@ -131,7 +132,7 @@
             <v-chip v-else size="small" color="success" label>ไม่มี error</v-chip>
             <v-spacer />
             <span class="text-caption text-disabled font-weight-regular">avg {{ summary.avgDurationMs.toLocaleString()
-            }} ms / request</span>
+              }} ms / request</span>
           </v-card-title>
           <v-divider />
           <template v-if="summary.errors.length">
@@ -144,7 +145,7 @@
                 <template #title>
                   <span class="text-error text-body-2">{{ err.error }}</span>
                   <v-chip v-if="err.searchQuery" size="x-small" variant="tonal" class="ml-2">🔍 {{ err.searchQuery
-                  }}</v-chip>
+                    }}</v-chip>
                 </template>
                 <template #append>
                   <v-chip size="x-small" :color="err.source === 'chrono24-search' ? 'blue' : 'grey'" variant="tonal"
@@ -157,7 +158,7 @@
           <v-card-text v-else class="text-center text-disabled py-6">ไม่มี error วันนี้</v-card-text>
         </v-card>
       </template>
-      <v-card v-else-if="!loading" rounded="lg">
+      <v-card v-else-if="!logsLoading" rounded="lg">
         <v-card-text class="text-center text-disabled py-10">ไม่มีข้อมูล Log วันที่ {{ selectedDate }}</v-card-text>
       </v-card>
     </template>
@@ -167,19 +168,19 @@
       <!-- Filter bar -->
       <v-row class="mb-3" dense align="center">
         <v-col cols="12" sm="4">
-          <v-text-field v-model="search" label="ค้นหา URL / keyword" prepend-inner-icon="mdi-magnify" variant="outlined"
+          <v-text-field v-model="logsSearch" label="ค้นหา URL / keyword" prepend-inner-icon="mdi-magnify" variant="outlined"
             density="compact" hide-details clearable />
         </v-col>
         <v-col cols="6" sm="2">
-          <v-select v-model="filterSrc" :items="['ทั้งหมด', ...availableSources]" label="Source" variant="outlined"
+          <v-select v-model="logsFilterSrc" :items="['ทั้งหมด', ...logsAvailableSources]" label="Source" variant="outlined"
             density="compact" hide-details />
         </v-col>
         <v-col cols="6" sm="2">
-          <v-select v-model="filterCat" :items="['ทั้งหมด', ...availableCategories]" label="Category" variant="outlined"
+          <v-select v-model="logsFilterCat" :items="['ทั้งหมด', ...logsAvailableCategories]" label="Category" variant="outlined"
             density="compact" hide-details />
         </v-col>
         <v-col cols="6" sm="2">
-          <v-select v-model="filterResult"
+          <v-select v-model="logsFilterResult"
             :items="[{ title: 'ทั้งหมด', value: 'all' }, { title: 'สำเร็จ', value: 'success' }, { title: 'ล้มเหลว', value: 'failed' }]"
             item-title="title" item-value="value" label="สถานะ" variant="outlined" density="compact" hide-details />
         </v-col>
@@ -190,13 +191,13 @@
 
       <v-card rounded="lg">
         <v-data-table :headers="entryHeaders" :items="filteredEntries" density="compact" :items-per-page="25"
-          class="text-body-2" @click:row="(_: any, { item }: any) => openDetail(item)">
+          class="text-body-2" @click:row="(_: any, { item }: any) => store.openLogsDetail(item)">
           <template #[`item.timestamp`]="{ item }">
             <span class="text-caption">{{ formatTime(item.timestamp) }}</span>
           </template>
           <template #[`item.httpStatus`]="{ item }">
             <v-chip size="x-small" :color="item.httpStatus === 200 ? 'success' : 'error'" label>{{ item.httpStatus
-            }}</v-chip>
+              }}</v-chip>
           </template>
           <template #[`item.source`]="{ item }">
             <v-chip size="x-small" :color="item.source === 'chrono24-search' ? 'blue' : 'grey'" variant="tonal" label>{{
@@ -208,7 +209,7 @@
                 item.url }}</span>
           </template>
           <template #[`item.domain`]="{ item }">
-            <span class="text-caption">{{ entryDomain(item) }}</span>
+            <span class="text-caption">{{ store.entryDomain(item) }}</span>
           </template>
           <template #[`item.screenshotFile`]="{ item }">
             <span class="text-caption text-medium-emphasis">{{ item.screenshotFile ?? '-' }}</span>
@@ -219,6 +220,10 @@
                 item.error }}</span>
             <span v-else class="text-disabled">-</span>
           </template>
+          <template #[`item.searchQuery`]="{ item }">
+            <v-chip v-if="item.searchQuery" size="x-small" color="primary" variant="tonal" prepend-icon="mdi-magnify" label>{{ item.searchQuery }}</v-chip>
+            <span v-else class="text-disabled">-</span>
+          </template>
           <template #[`item.durationMs`]="{ item }">
             <span class="text-caption">{{ item.durationMs.toLocaleString() }} ms</span>
           </template>
@@ -227,20 +232,20 @@
     </template>
 
     <!-- Detail dialog -->
-    <v-dialog v-model="detailOpen" max-width="860" scrollable>
-      <v-card v-if="detailEntry" rounded="lg">
+    <v-dialog v-model="logsDetailOpen" max-width="860" scrollable>
+      <v-card v-if="logsDetailEntry" rounded="lg">
         <v-card-title class="d-flex align-center pa-4">
-          <v-chip :color="detailEntry.httpStatus === 200 ? 'success' : 'error'" label class="mr-3">{{
-            detailEntry.httpStatus
-          }}</v-chip>
+          <v-chip :color="logsDetailEntry.httpStatus === 200 ? 'success' : 'error'" label class="mr-3">{{
+            logsDetailEntry.httpStatus
+            }}</v-chip>
           Log Detail
           <v-spacer />
-          <v-btn icon="mdi-close" variant="text" size="small" @click="detailOpen = false" />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="logsDetailOpen = false" />
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4">
           <!-- Screenshot -->
-          <ScreenshotImg v-if="detailEntry.screenshotFile" :src="`/api/screenshot?file=${detailEntry.screenshotFile}`"
+          <ScreenshotImg v-if="logsDetailEntry.screenshotFile" :src="`/api/screenshot?file=${logsDetailEntry.screenshotFile}`"
             max-height="260" class="mb-4" />
 
           <v-table density="compact">
@@ -249,7 +254,7 @@
                 <td class="text-medium-emphasis font-weight-medium" style="width:160px">{{ k }}</td>
                 <td>
                   <v-chip v-if="k === 'errorType' && v" size="x-small" :color="errorColor(v as string)" label>{{ v
-                    }}</v-chip>
+                  }}</v-chip>
                   <span v-else-if="k === 'URL' && v" class="d-flex align-center ga-1">
                     <span style="word-break:break-all">{{ v }}</span>
                     <v-btn :href="v as string" target="_blank" rel="noopener" icon="mdi-open-in-new" size="x-small"
@@ -267,13 +272,13 @@
           </v-table>
 
           <!-- Extracted Items -->
-          <template v-if="detailEntry.dataFile">
+          <template v-if="logsDetailEntry.dataFile">
             <v-divider class="my-4" />
             <div class="mb-3 d-flex align-center ga-2">
               ข้อมูลที่ Gemini ดึงได้
             </div>
-            <v-row v-if="detailItems.length" dense>
-              <v-col v-for="(item, i) in detailItems" :key="i" cols="12">
+            <v-row v-if="logsDetailItems.length" dense>
+              <v-col v-for="(item, i) in logsDetailItems" :key="i" cols="12">
                 <v-card variant="tonal" color="surface-variant" rounded="lg" class="pa-3 text-body">
                   <v-row dense>
                     <v-col v-for="[fk, fv] in Object.entries(item).filter(([, v]) => v != null && v !== '')" :key="fk"
@@ -285,7 +290,7 @@
                 </v-card>
               </v-col>
             </v-row>
-            <v-card v-else-if="!detailItemsLoading" variant="outlined" rounded="lg"
+            <v-card v-else-if="!logsDetailItemsLoading" variant="outlined" rounded="lg"
               class="pa-3 text-center text-disabled text-body-2">
               ไม่มีข้อมูล
             </v-card>
@@ -297,87 +302,54 @@
 </template>
 
 <script setup lang="ts">
-const today = new Date().toISOString().slice(0, 10);
-const selectedDate = ref(today);
-const loading = ref(false);
-const fetchError = ref<string | null>(null);
-const summary = ref<any>(null);
-const entries = ref<any[]>([]);
-const activeView = ref<'summary' | 'entries'>('summary');
+import { useLogsEntriesStore } from '~/stores/logsEntries'
 
-// Filters for entries view
-const search = ref('');
-const filterSrc = ref('ทั้งหมด');
-const filterCat = ref('ทั้งหมด');
-const filterResult = ref('all');
+const store = useLogsEntriesStore()
+const route = useRoute()
 
-function entryDomain(e: any): string {
-  return e.source ?? extractDomain(e.url);
-}
+const {
+  selectedDate, dateMenu, formattedDate,
+  logsLoading, logsFetchError, summary, activeView,
+  logsSearch, logsFilterSrc, logsFilterCat, logsFilterResult,
+  sortedErrors, logsAvailableSources, logsAvailableCategories,
+  filteredEntries,
+  logsDetailOpen, logsDetailEntry, logsDetailItems, logsDetailItemsLoading,
+} = storeToRefs(store)
 
-function extractDomain(url: string): string {
-  try { return new URL(url).hostname.replace(/^www\./, '').split('.')[0]; } catch { return 'unknown'; }
-}
+const initialDate = typeof route.query.date === 'string' ? route.query.date : null
+if (initialDate) selectedDate.value = initialDate
 
-const sortedErrors = computed(() =>
-  [...(summary.value?.errors ?? [])].sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-);
-
-const availableSources = computed(() => [...new Set(entries.value.map(entryDomain))]);
-const availableCategories = computed(() => [...new Set(entries.value.map((e) => e.categoryId).filter(Boolean))]);
-
-const filteredEntries = computed(() => {
-  return entries.value.filter((e) => {
-    if (filterSrc.value !== 'ทั้งหมด' && entryDomain(e) !== filterSrc.value) return false;
-    if (filterCat.value !== 'ทั้งหมด' && e.categoryId !== filterCat.value) return false;
-    if (filterResult.value === 'success' && (e.httpStatus !== 200 || e.error)) return false;
-    if (filterResult.value === 'failed' && e.httpStatus === 200 && !e.error) return false;
-    if (search.value) {
-      const q = search.value.toLowerCase();
-      if (!e.url?.toLowerCase().includes(q) && !e.searchQuery?.toLowerCase().includes(q) && !e.screenshotFile?.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-});
+const datePickerDate = computed({
+  get: () => new Date(selectedDate.value + 'T00:00:00'),
+  set: (val: Date) => {
+    const y = val.getFullYear()
+    const m = String(val.getMonth() + 1).padStart(2, '0')
+    const d = String(val.getDate()).padStart(2, '0')
+    selectedDate.value = `${y}-${m}-${d}`
+    dateMenu.value = false
+    store.fetchAll()
+  },
+})
 
 const entryHeaders = [
   { title: 'เวลา', key: 'timestamp', width: 90 },
   { title: 'Status', key: 'httpStatus', width: 80 },
-  { title: 'Source', key: 'domain', width: 150 },
+  { title: 'Source', key: 'domain', width: 120 },
+  { title: 'Query', key: 'searchQuery', width: 150 },
   { title: 'URL', key: 'url' },
-  { title: 'ไฟล์', key: 'screenshotFile', width: 200 },
   { title: 'Error', key: 'error' },
-  { title: 'ms', key: 'durationMs', width: 100 },
-];
-
-// Detail dialog
-const detailOpen = ref(false);
-const detailEntry = ref<any>(null);
-const detailItems = ref<any[]>([]);
-const detailItemsLoading = ref(false);
-
-async function openDetail(item: any) {
-  detailEntry.value = item;
-  detailItems.value = [];
-  detailOpen.value = true;
-  if (item.dataFile) {
-    detailItemsLoading.value = true;
-    try {
-      const data = await $fetch<any>(`/api/data?file=${item.dataFile}`);
-      detailItems.value = Array.isArray(data) ? data : [data];
-    } catch { /* no data */ }
-    finally { detailItemsLoading.value = false; }
-  }
-}
+  { title: 'ms', key: 'durationMs', width: 90 },
+]
 
 const detailRows = computed(() => {
-  if (!detailEntry.value) return [];
-  const e = detailEntry.value;
+  if (!logsDetailEntry.value) return []
+  const e = logsDetailEntry.value
   return [
     ['เวลา', new Date(e.timestamp).toLocaleString('th-TH')],
     ['source', e.source],
-    ['URL', e.url],
     ['searchQuery', e.searchQuery],
+    ['roundId', e.roundId],
+    ['URL', e.url],
     ['categoryId', e.categoryId],
     ['httpStatus', e.httpStatus],
     ['screenshotFile', e.screenshotFile],
@@ -385,61 +357,30 @@ const detailRows = computed(() => {
     ['durationMs', e.durationMs != null ? `${e.durationMs.toLocaleString()} ms` : null],
     ['errorType', e.errorType],
     ['error', e.error],
-  ];
-});
-
-async function fetchAll() {
-  loading.value = true;
-  fetchError.value = null;
-  const dateParam = selectedDate.value.replace(/-/g, '');
-  try {
-    const [sumData, entriesData] = await Promise.all([
-      $fetch<any>(`/api/logs/summary?date=${dateParam}`),
-      $fetch<any>(`/api/logs/entries?date=${dateParam}`),
-    ]);
-    summary.value = sumData.total === 0 ? null : sumData;
-    entries.value = entriesData.entries ?? [];
-  } catch (e: any) {
-    fetchError.value = e?.message ?? 'โหลดข้อมูลล้มเหลว';
-    summary.value = null;
-    entries.value = [];
-  } finally {
-    loading.value = false;
-  }
-}
-
-function filterStatus(status: 'success' | 'failed') {
-  filterSrc.value = 'ทั้งหมด';
-  filterCat.value = 'ทั้งหมด';
-  filterResult.value = status;
-  activeView.value = 'entries';
-}
-
-function filterSource(src: string) {
-  filterCat.value = 'ทั้งหมด';
-  filterResult.value = 'all';
-  filterSrc.value = src;
-  activeView.value = 'entries';
-}
-
-function filterCategory(cat: string) {
-  filterSrc.value = 'ทั้งหมด';
-  filterResult.value = 'all';
-  filterCat.value = cat;
-  activeView.value = 'entries';
-}
+  ]
+})
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 function errorColor(type: string | null) {
   const map: Record<string, string> = {
     timeout: 'warning', screenshot: 'error', extraction: 'orange',
     parse: 'purple', config: 'red',
-  };
-  return map[type ?? ''] ?? 'error';
+  }
+  return map[type ?? ''] ?? 'error'
 }
 
-onMounted(fetchAll);
+onMounted(async () => {
+  await store.fetchAll()
+  const targetFile = typeof route.query.file === 'string' ? route.query.file : null
+  if (targetFile) {
+    const match = store.logEntries.find(e => e.screenshotFile === targetFile)
+    if (match) {
+      activeView.value = 'entries'
+      store.openLogsDetail(match)
+    }
+  }
+})
 </script>
