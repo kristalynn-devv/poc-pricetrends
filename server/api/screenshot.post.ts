@@ -79,7 +79,7 @@ export default defineEventHandler(async (event) => {
           await page.waitForTimeout(800)
           break
         }
-      } catch { /* popup not present or not clickable — continue */ }
+      } catch { /* popup not present or not clickable - continue */ }
     }
     await page.mouse.move(0, 0)
     await page.waitForTimeout(300)

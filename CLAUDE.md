@@ -136,6 +136,8 @@ UI ให้ผู้ใช้เพิ่ม optional fields ได้ด้ว
 **Frontend components/composables ใหม่:**
 - `app/components/ScreenshotImg.vue` — แสดงภาพ screenshot พร้อม lightbox (thumbnail + full preview)
 - `app/composables/useCategoryFields.ts` — ข้อมูล required/optional fields ต่อ category (Nuxt auto-import)
+  - `getFieldOrder(categoryId)` — คืน canonical column order: required → price → currency → optional
+  - ใช้ใน `index.vue` (srcHeaders, detailHeaders) และ `entries.vue` (getColumns) เพื่อให้ลำดับ column เหมือนกันทุก source ในหมวดเดียวกัน อย่า sort ด้วย `Object.keys()` ดิบ
 
 ## Known gaps
 

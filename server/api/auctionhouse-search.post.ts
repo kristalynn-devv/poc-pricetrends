@@ -2,7 +2,7 @@ import { chromium, type Browser, type BrowserContext } from 'playwright'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { appendLog } from '../utils/logger'
+import { appendLog, saveItems } from '../utils/logger'
 import { mergeScreenshotConfig, type ScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
 import { appendResult } from '../utils/resultsStore'
 import { dismissCookieBanner, createStealthContext, scrollForLazyContent , takeScreenshot} from '../utils/browserUtils'
@@ -367,9 +367,10 @@ export default defineEventHandler(async (event) => {
             result.screenshotOk = true
             emit('info', `[${i + 1}] Screenshot saved`, { filename })
 
+            const dataFile = result.items.length > 0 ? await saveItems(result.items, categoryId, filename).catch(() => null) : null
             const ts = new Date().toISOString()
             await Promise.all([
-              appendLog({ timestamp: ts, source: 'auctionhouse', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, error: null, errorType: null }).catch(() => {}),
+              appendLog({ timestamp: ts, source: 'auctionhouse', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null }).catch(() => {}),
               appendResult({ timestamp: ts, source: 'auctionhouse', url, categoryId, screenshotFile: filename, items: result.items as Record<string, any>[], roundId, searchQuery: query }).catch(() => {}),
             ])
           } finally {

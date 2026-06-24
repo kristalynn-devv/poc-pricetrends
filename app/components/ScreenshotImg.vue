@@ -12,7 +12,7 @@
         class="rounded cursor-pointer"
         @click="open = true"
       />
-      <span v-else class="text-medium-emphasis text-caption">—</span>
+      <span v-else class="text-medium-emphasis text-caption">-</span>
     </template>
 
     <!-- preview -->

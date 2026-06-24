@@ -31,8 +31,7 @@
               </v-chip>
               <v-btn v-if="grp.lastRoundId" size="x-small" variant="tonal" color="success"
                 prepend-icon="mdi-open-in-new"
-                :to="`/entries?round=${grp.lastRoundId}&date=${new Date().toISOString().slice(0,10)}`"
-                @click.stop>
+                :to="`/entries?round=${grp.lastRoundId}&date=${new Date().toISOString().slice(0, 10)}`" @click.stop>
                 ดูผลลัพธ์
               </v-btn>
             </template>
@@ -46,8 +45,8 @@
             <div class="d-flex align-center ga-2 mb-2">
               <v-text-field v-for="field in grp.requiredFields" :key="field.key" v-model="grp.fieldValues[field.key]"
                 :label="field.label" variant="outlined" density="compact" hide-details :disabled="grp.running"
-                style="flex:1; min-width:0" @keyup.enter="addQuery(grp)" />
-              <v-btn color="secondary" variant="tonal" size="small" class="text-none" height="40px"
+                style="flex:1; min-width:0" @keyup.enter="addQuery(grp)" clearable />
+              <v-btn color="secondary" variant="tonal" size="small" class="text-none" height="40"
                 :disabled="grp.requiredFields.every(f => !grp.fieldValues[f.key]?.trim()) || grp.running"
                 prepend-icon="mdi-plus" @click.stop="addQuery(grp)">
                 เพิ่มรายการ
@@ -59,7 +58,7 @@
               <v-col v-for="key in grp.activeOptionals" :key="key" cols="6" md="3">
                 <v-text-field v-model="grp.fieldValues[key]"
                   :label="grp.optionalFields.find(f => f.key === key)?.label ?? key" variant="outlined"
-                  density="compact" hide-details :disabled="grp.running" @keyup.enter="addQuery(grp)">
+                  density="compact" hide-details :disabled="grp.running" @keyup.enter="addQuery(grp)" clearable>
                   <template #append-inner>
                     <v-icon size="x-small" class="cursor-pointer"
                       @click.stop="removeOptionalField(grp, key)">mdi-close</v-icon>
@@ -82,16 +81,16 @@
             <v-row dense align="center" class="mb-2">
               <v-col>
                 <div v-if="grp.queries.length > 0" class="d-flex flex-wrap ga-1" @click.stop>
-                  <v-chip v-for="(q, qi) in grp.queries" :key="q" :model-value="true" size="small" closable :disabled="grp.running"
-                    @click:close="grp.queries.splice(qi, 1)">
+                  <v-chip v-for="(q, qi) in grp.queries" :key="q" :model-value="true" size="small" closable
+                    :disabled="grp.running" @click:close="grp.queries.splice(qi, 1)">
                     {{ q }}
                   </v-chip>
                 </div>
-                <p v-else class="text-caption text-medium-emphasis mb-0">ยังไม่มีรายการค้นหา — กรอกข้อมูลแล้วกด
+                <p v-else class="text-caption text-medium-emphasis mb-0">ยังไม่มีรายการค้นหา - กรอกข้อมูลแล้วกด
                   "เพิ่มรายการ"</p>
               </v-col>
               <v-col cols="auto" class="d-flex align-center ga-2">
-                <v-btn color="primary" :loading="grp.running" height="40px"
+                <v-btn color="primary" :loading="grp.running" height="40"
                   :disabled="grp.queries.length === 0 || !grp.sources.some(s => s.apiRoute && grp.enabled[s.name])"
                   prepend-icon="mdi-play" @click="runGroup(grp)">
                   ค้นหา
@@ -101,6 +100,14 @@
           </v-card-text>
 
           <!-- Source list -->
+          <v-divider />
+          <div class="d-flex align-center px-4 py-1 ga-1">
+            <span class="text-caption text-medium-emphasis flex-grow-1">แหล่งค้นหา</span>
+            <v-btn size="x-small" variant="text" class="text-none" :disabled="grp.running"
+              @click.stop="toggleAllSources(grp)">
+              {{grp.sources.every(s => !s.apiRoute || grp.enabled[s.name]) ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}}
+            </v-btn>
+          </div>
           <v-divider />
           <v-list>
             <template v-for="(src, si) in grp.sources" :key="src.name">
@@ -155,20 +162,20 @@
             <v-row dense class="mb-2">
               <v-col cols="5">
                 <v-text-field v-model.number="screenshotCfg.viewportWidth" label="Width (px)" type="number"
-                  variant="outlined" density="compact" hide-details />
+                  variant="outlined" density="compact" hide-details clearable />
               </v-col>
               <v-col cols="2" class="d-flex align-center justify-center">
                 <span class="text-body-2 text-medium-emphasis">×</span>
               </v-col>
               <v-col cols="5">
                 <v-text-field v-model.number="screenshotCfg.viewportHeight" label="Height (px)" type="number"
-                  variant="outlined" density="compact" hide-details :disabled="screenshotCfg.fullPage" />
+                  variant="outlined" density="compact" hide-details :disabled="screenshotCfg.fullPage" clearable />
               </v-col>
             </v-row>
             <v-row dense align="center" class="mb-2">
               <v-col cols="6">
                 <v-text-field v-model.number="screenshotCfg.quality" label="Quality (1–100)" type="number"
-                  variant="outlined" density="compact" hide-details />
+                  variant="outlined" density="compact" hide-details clearable />
               </v-col>
               <v-col cols="6" class="d-flex justify-end">
                 <v-switch v-model="screenshotCfg.fullPage" label="เต็มจอ" density="compact" hide-details
@@ -255,7 +262,8 @@
               <ScreenshotImg :src="item._screenshot" thumbnail class="my-1" />
             </template>
             <template #[`item.price`]="{ item }">
-              <span>{{ item.price != null ? Number(item.price).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—' }}</span>
+              <span>{{ item.price != null ? Number(item.price).toLocaleString('en-US', { maximumFractionDigits: 0 }) :
+                '-' }}</span>
             </template>
           </v-data-table>
         </v-container>
@@ -324,25 +332,25 @@ interface CategoryGroup {
 const screenshotCfgOpen = ref(false);
 
 // ── Screenshot config ──────────────────────────────────────────────────────────
-const SCREENSHOT_CFG_KEY = 'screenshotCfg_v1'
+const SCREENSHOT_CFG_KEY = 'screenshotCfg_v1';
 const SCREENSHOT_CFG_DEFAULTS = {
   viewportWidth: 1920, viewportHeight: 1080, fullPage: true, quality: 85, cropHeight: undefined as number | undefined,
   clip: { enabled: false, x: 0, y: 0, width: 1920, height: 1080 },
   limit: 1,
-}
+};
 function loadScreenshotCfg() {
   try {
-    const raw = localStorage.getItem(SCREENSHOT_CFG_KEY)
-    if (raw) return { ...SCREENSHOT_CFG_DEFAULTS, ...JSON.parse(raw), clip: { ...SCREENSHOT_CFG_DEFAULTS.clip, ...(JSON.parse(raw).clip ?? {}) } }
-  } catch {}
-  return { ...SCREENSHOT_CFG_DEFAULTS, clip: { ...SCREENSHOT_CFG_DEFAULTS.clip } }
+    const raw = localStorage.getItem(SCREENSHOT_CFG_KEY);
+    if (raw) return { ...SCREENSHOT_CFG_DEFAULTS, ...JSON.parse(raw), clip: { ...SCREENSHOT_CFG_DEFAULTS.clip, ...(JSON.parse(raw).clip ?? {}) } };
+  } catch { }
+  return { ...SCREENSHOT_CFG_DEFAULTS, clip: { ...SCREENSHOT_CFG_DEFAULTS.clip } };
 }
-const screenshotCfg = reactive(loadScreenshotCfg())
-watch(screenshotCfg, (val) => localStorage.setItem(SCREENSHOT_CFG_KEY, JSON.stringify(val)), { deep: true })
+const screenshotCfg = reactive(loadScreenshotCfg());
+watch(screenshotCfg, (val) => localStorage.setItem(SCREENSHOT_CFG_KEY, JSON.stringify(val)), { deep: true });
 function resetScreenshotCfg() {
-  Object.assign(screenshotCfg, { ...SCREENSHOT_CFG_DEFAULTS, clip: undefined })
-  Object.assign(screenshotCfg.clip, SCREENSHOT_CFG_DEFAULTS.clip)
-  localStorage.removeItem(SCREENSHOT_CFG_KEY)
+  Object.assign(screenshotCfg, { ...SCREENSHOT_CFG_DEFAULTS, clip: undefined });
+  Object.assign(screenshotCfg.clip, SCREENSHOT_CFG_DEFAULTS.clip);
+  localStorage.removeItem(SCREENSHOT_CFG_KEY);
 }
 
 const openPanels = ref<number[]>([0, 1, 2, 3, 4]);
@@ -366,15 +374,22 @@ const detailExtracted = computed(() => {
   return srcExtracted(grp, detailSrcName.value);
 });
 
-const { getAllowedKeys } = useCategoryFields();
+const { getAllowedKeys, getFieldOrder } = useCategoryFields();
 
 const detailHeaders = computed(() => {
   if (detailExtracted.value.length === 0) return [];
   const grp = categoryGroups.value.find((g: any) => g.label === detailGrpLabel.value);
   const categoryId = grp?.ids?.[0] as string | undefined;
   const allowed = categoryId ? getAllowedKeys(categoryId) : null;
+  const order = categoryId ? getFieldOrder(categoryId) : [];
   const allKeys = Object.keys(detailExtracted.value[0]).filter((k) => k !== '_screenshot' && k !== '_source');
-  const dataKeys = allowed ? allKeys.filter((k) => allowed.has(k)) : allKeys;
+  const filteredKeys = allowed ? allKeys.filter((k) => allowed.has(k)) : allKeys;
+  const dataKeys = order.length
+    ? [...filteredKeys].sort((a, b) => {
+      const ai = order.indexOf(a); const bi = order.indexOf(b);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    })
+    : filteredKeys;
   return [
     { title: 'รูป', key: '_screenshot', sortable: false, width: 116 },
     ...dataKeys.map((k) => ({ title: k, key: k, sortable: true })),
@@ -482,6 +497,12 @@ function makeGroup(label: string, ids: string[], sources: SourceDef[]): Category
   };
 }
 
+function toggleAllSources(grp: CategoryGroup) {
+  const readySources = grp.sources.filter(s => s.apiRoute);
+  const allEnabled = readySources.every(s => grp.enabled[s.name]);
+  readySources.forEach(s => { grp.enabled[s.name] = !allEnabled; });
+}
+
 function addOptionalField(grp: CategoryGroup, key: string) {
   if (!grp.activeOptionals.includes(key)) {
     grp.activeOptionals.push(key);
@@ -506,7 +527,7 @@ function addQuery(grp: CategoryGroup) {
   allFields.forEach((f) => { grp.fieldValues[f.key] = ''; });
 }
 
-const categoryGroups = ref<CategoryGroup[]>([
+const categoryGroups = useState<CategoryGroup[]>('categoryGroups', () => [
   makeGroup('นาฬิกา', ['103'], [
     { name: 'StarBuyers Global Auction', url: 'https://www.starbuyers-global-auction.com/login' },
     { name: 'Chrono24', url: 'https://www.chrono24.com', apiRoute: '/api/chrono24-search' },
@@ -570,7 +591,17 @@ function srcExtracted(grp: CategoryGroup, srcName: string) {
 function srcHeaders(grp: CategoryGroup, srcName: string) {
   const rows = srcExtracted(grp, srcName);
   if (rows.length === 0) return [];
-  const dataKeys = Object.keys(rows[0]).filter((k) => k !== '_screenshot' && k !== '_source');
+  const categoryId = grp.ids?.[0] as string | undefined;
+  const allowed = categoryId ? getAllowedKeys(categoryId) : null;
+  const order = categoryId ? getFieldOrder(categoryId) : [];
+  const allKeys = Object.keys(rows[0]).filter((k) => k !== '_screenshot' && k !== '_source');
+  const filteredKeys = allowed ? allKeys.filter((k) => allowed.has(k)) : allKeys;
+  const dataKeys = order.length
+    ? [...filteredKeys].sort((a, b) => {
+      const ai = order.indexOf(a); const bi = order.indexOf(b);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    })
+    : filteredKeys;
   return [
     { title: 'รูป', key: '_screenshot', sortable: false, width: 116 },
     ...dataKeys.map((k) => ({ title: k, key: k, sortable: true })),
@@ -691,11 +722,36 @@ async function runGroup(grp: CategoryGroup) {
   grp.running = true;
   const roundId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
   grp.lastRoundId = roundId;
+
+  const CONCURRENCY = 3;
+  const TARGET_HITS = 3;
+  const queue = grp.sources.filter((s) => s.apiRoute && grp.enabled[s.name]);
+
   try {
-    const enabledSources = grp.sources.filter((s) => s.apiRoute && grp.enabled[s.name]);
-    for (const src of enabledSources) {
-      await runSource(grp, src, roundId);
-    }
+    let qi = 0;
+    let hits = 0;
+    let active = 0;
+
+    await new Promise<void>((resolve) => {
+      function tryNext() {
+        // fill slots while under concurrency limit and haven't hit target
+        while (active < CONCURRENCY && hits + active < TARGET_HITS && qi < queue.length) {
+          const src = queue[qi++];
+          active++;
+          runSource(grp, src, roundId).then(() => {
+            active--;
+            if (srcExtracted(grp, src.name).length > 0) hits++;
+            if (hits >= TARGET_HITS || (qi >= queue.length && active === 0)) {
+              resolve();
+            } else {
+              tryNext();
+            }
+          });
+        }
+        if (active === 0) resolve();
+      }
+      tryNext();
+    });
   } finally {
     grp.running = false;
   }

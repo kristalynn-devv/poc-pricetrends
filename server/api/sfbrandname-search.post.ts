@@ -3,7 +3,7 @@ import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screensh
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { appendLog } from '../utils/logger'
+import { appendLog, saveItems } from '../utils/logger'
 import { appendResult } from '../utils/resultsStore'
 import { dismissCookieBanner, scrollForLazyContent , takeScreenshot, filterListingsByQuery} from '../utils/browserUtils'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
@@ -202,9 +202,10 @@ export default defineEventHandler(async (event) => {
             result.items = sanitizeItems(JSON.parse(text))
             result.extractOk = true
             emit('info', `[${i + 1}] Extracted ${result.items.length} item(s)`)
+            const dataFile = result.items.length > 0 ? await saveItems(result.items, categoryId, filename).catch(() => null) : null
             const ts = new Date().toISOString()
             await Promise.all([
-              appendLog({ timestamp: ts, source: 'sfbrandname', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, error: null, errorType: null }).catch(() => {}),
+              appendLog({ timestamp: ts, source: 'sfbrandname', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null }).catch(() => {}),
               appendResult({ timestamp: ts, source: 'sfbrandname', url, categoryId, screenshotFile: filename, items: result.items as Record<string, any>[], roundId, searchQuery: query }).catch((e) => emit('warn', 'appendResult failed', String(e))),
             ])
           } catch {

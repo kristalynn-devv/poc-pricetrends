@@ -3,7 +3,7 @@ import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screensh
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { appendLog } from '../utils/logger'
+import { appendLog, saveItems } from '../utils/logger'
 import { appendResult } from '../utils/resultsStore'
 import { dismissCookieBanner, scrollForLazyContent , takeScreenshot, filterListingsByQuery} from '../utils/browserUtils'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
@@ -164,7 +164,7 @@ export default defineEventHandler(async (event) => {
           // Use slug filter if it yields results, otherwise fall back to title+url filter
           const finalMatched = slugMatched.length > 0 ? slugMatched : filtered
           emit('info', `Keyword filter: kept ${finalMatched.length}/${allProductPairs.length}`)
-          listingUrls = finalMatched.slice(0, limit)
+          listingUrls = finalMatched.slice(0, limit).map((p) => p.url)
           emit(listingUrls.length > 0 ? 'info' : 'warn', `Filtered to ${listingUrls.length} URLs (total=${allProductPairs.length})`)
         } finally {
           await ctx.close()
@@ -244,9 +244,10 @@ export default defineEventHandler(async (event) => {
             result.items = sanitizeItems(JSON.parse(text))
             result.extractOk = true
             emit('info', `[${i + 1}] Extracted ${result.items.length} item(s)`)
+            const dataFile = result.items.length > 0 ? await saveItems(result.items, categoryId, filename).catch(() => null) : null
             const ts = new Date().toISOString()
             await Promise.all([
-              appendLog({ timestamp: ts, source: 'komehyo', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, error: null, errorType: null }).catch(() => {}),
+              appendLog({ timestamp: ts, source: 'komehyo', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null }).catch(() => {}),
               appendResult({ timestamp: ts, source: 'komehyo', url, categoryId, screenshotFile: filename, items: result.items as Record<string, any>[], roundId, searchQuery: query }).catch((e) => emit('warn', 'appendResult failed', String(e))),
             ])
           } catch {

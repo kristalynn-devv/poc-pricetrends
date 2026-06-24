@@ -76,5 +76,15 @@ export function useCategoryFields() {
     ])
   }
 
-  return { getFields, getAllowedKeys, COMMON_FIELDS }
+  // Returns canonical field order: required → price → currency → optional
+  function getFieldOrder(categoryId: string): string[] {
+    const { required, optional } = getFields(categoryId)
+    return [
+      ...required.map((f) => f.key),
+      ...COMMON_FIELDS.map((f) => f.key),
+      ...optional.map((f) => f.key),
+    ]
+  }
+
+  return { getFields, getAllowedKeys, getFieldOrder, COMMON_FIELDS }
 }

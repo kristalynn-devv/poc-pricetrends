@@ -1,5 +1,5 @@
 const BASE_FIELDS: Record<string, string> = {
-  price: 'ตัวเลขจำนวนเต็ม — ตัดจุลภาค (,) ออก, จุด (.) คือ decimal point ให้ปัดทิ้ง ไม่ใช่ thousands separator เช่น 1,560,000.00 → 1560000 | null',
+  price: 'ตัวเลขจำนวนเต็ม - ตัดจุลภาค (,) ออก, จุด (.) คือ decimal point ให้ปัดทิ้ง ไม่ใช่ thousands separator เช่น 1,560,000.00 → 1560000 | null',
   currency: 'สกุลเงิน เช่น THB, USD, JPY, EUR | null',
 }
 
@@ -98,7 +98,7 @@ export function buildExtractPrompt(options: {
   const label = getCategoryLabel(categoryId)
 
   const modeText = mode === 'detail'
-    ? `นี่คือหน้า product detail — สกัดเฉพาะ **สินค้าหลัก** ที่เป็นหัวข้อของหน้านี้เท่านั้น ห้ามรวมสินค้าแนะนำ, สินค้าที่เกี่ยวข้อง, หรือสินค้าอื่นๆ ที่แสดงอยู่ด้านล่าง\nตอบกลับเป็น JSON array ที่มี **1 element เท่านั้น** ไม่มีข้อความอื่น ไม่มี markdown code block`
+    ? `นี่คือหน้า product detail - สกัดเฉพาะ **สินค้าหลัก** ที่เป็นหัวข้อของหน้านี้เท่านั้น ห้ามรวมสินค้าแนะนำ, สินค้าที่เกี่ยวข้อง, หรือสินค้าอื่นๆ ที่แสดงอยู่ด้านล่าง\nตอบกลับเป็น JSON array ที่มี **1 element เท่านั้น** ไม่มีข้อความอื่น ไม่มี markdown code block`
     : `ตอบกลับเป็น JSON array ของสินค้าทุกชิ้นที่เห็นในภาพ ไม่มีข้อความอื่น ไม่มี markdown code block`
 
   return `คุณคือผู้ช่วยสกัดข้อมูล${label}จากภาพหน้าเว็บ ${siteName}

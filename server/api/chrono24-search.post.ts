@@ -134,7 +134,7 @@ export default defineEventHandler(async (event) => {
       }
 
       if (listingUrls.length === 0) {
-        emit('warn', 'No listing URLs found — may be blocked')
+        emit('warn', 'No listing URLs found - may be blocked')
         send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No listing URLs found' })
         ctrl.close()
         await browser.close()

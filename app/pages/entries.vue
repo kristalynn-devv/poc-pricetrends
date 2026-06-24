@@ -16,7 +16,7 @@
       <v-row align="center" dense>
         <v-col cols="12" sm="auto">
           <v-text-field v-model="selectedDate" type="date" label="วันที่" variant="outlined" density="compact"
-            hide-details style="min-width: 180px" @change="fetchResults" />
+            hide-details style="min-width: 180px" @change="fetchResults" clearable />
         </v-col>
         <v-col cols="12" sm="3">
           <v-text-field v-model="search" label="ค้นหา brand / model / keyword" prepend-inner-icon="mdi-magnify"
@@ -31,15 +31,8 @@
             density="compact" hide-details />
         </v-col>
         <v-col cols="auto">
-          <v-btn color="primary" variant="tonal" prepend-icon="mdi-refresh" :loading="loading" @click="fetchResults"
-            size="small">รีเฟรช</v-btn>
-        </v-col>
-        <v-col cols="auto">
-          <v-chip size="small" :color="flatItems.length !== allItems.length ? 'primary' : 'default'" variant="tonal">
-            {{ flatItems.length }}<template v-if="flatItems.length !== allItems.length"> / {{ allItems.length
-            }}</template>
-            items
-          </v-chip>
+          <v-btn color="primary" variant="tonal" prepend-icon="mdi-refresh" :loading="loading" height="40"
+            @click="fetchResults">รีเฟรช</v-btn>
         </v-col>
         <v-spacer />
         <v-col cols="auto">
@@ -62,7 +55,8 @@
         <v-tab v-for="(round, ri) in rounds" :key="round.roundId" :value="round.roundId">
           <div class="d-flex flex-column align-start" style="line-height: 1.3">
             <span class="text-caption font-weight-medium">รอบที่ {{ rounds.length - ri }}</span>
-            <span class="text-caption text-disabled">{{ formatTime(round.timestamp) }}<span v-if="round.query"> · {{ round.query }}</span></span>
+            <span class="text-caption text-disabled">{{ formatTime(round.timestamp) }}<span v-if="round.query"> · {{
+              round.query }}</span></span>
           </div>
         </v-tab>
       </v-tabs>
@@ -73,7 +67,8 @@
             <!-- Category section header -->
             <div class="d-flex align-center ga-2 px-1 pt-4 pb-2">
               <v-chip size="small" label color="primary" variant="tonal">{{ catLabel(catGroup.categoryId) }}</v-chip>
-              <span class="text-caption text-medium-emphasis">{{ catGroup.entries.flatMap((e: any) => e.items).length }} items</span>
+              <span class="text-caption text-medium-emphasis">{{catGroup.entries.flatMap((e: any) => e.items).length}}
+                items</span>
             </div>
 
             <!-- Entry cards -->
@@ -105,16 +100,18 @@
                       <tr v-for="(item, ii) in group.items" :key="ii">
                         <td v-for="col in getColumns(group.items, group.categoryId)" :key="col">
                           <template v-if="col === 'price'">
-                            <span class="font-weight-medium">{{ item[col] != null ? Number(item[col]).toLocaleString('en-US',
-                              { maximumFractionDigits: 0 }) : '—' }}</span>
+                            <span class="font-weight-medium">{{ item[col] != null ?
+                              Number(item[col]).toLocaleString('en-US',
+                                { maximumFractionDigits: 0 }) : '-' }}</span>
                           </template>
                           <template v-else-if="col === 'condition'">
-                            <v-chip v-if="item[col]" size="x-small" :color="conditionColor(item[col])" variant="tonal">{{
-                              item[col] }}</v-chip>
-                            <span v-else class="text-disabled">—</span>
+                            <v-chip v-if="item[col]" size="x-small" :color="conditionColor(item[col])"
+                              variant="tonal">{{
+                                item[col] }}</v-chip>
+                            <span v-else class="text-disabled">-</span>
                           </template>
                           <template v-else>
-                            <span>{{ item[col] ?? '—' }}</span>
+                            <span>{{ item[col] ?? '-' }}</span>
                           </template>
                         </td>
                       </tr>
@@ -123,7 +120,8 @@
                 </div>
               </div>
 
-              <v-card-text v-if="group.items.length === 0" class="text-disabled text-center py-4">ไม่มี item</v-card-text>
+              <v-card-text v-if="group.items.length === 0" class="text-disabled text-center py-4">ไม่มี
+                item</v-card-text>
             </v-card>
           </template>
         </v-window-item>
@@ -149,11 +147,11 @@ const CATEGORY_NAMES: Record<string, string> = {
   '110': 'แว่นตา',
   '111': 'เครื่องมือช่าง',
   '112': 'อุปกรณ์ไอที',
-}
+};
 
 function catLabel(id: string | null) {
-  if (!id || id === '__none__') return 'ไม่ระบุหมวด'
-  return CATEGORY_NAMES[id] ? `${CATEGORY_NAMES[id]} (${id})` : `หมวด ${id}`
+  if (!id || id === '__none__') return 'ไม่ระบุหมวด';
+  return CATEGORY_NAMES[id] ? `${CATEGORY_NAMES[id]} (${id})` : `หมวด ${id}`;
 }
 
 const today = new Date().toISOString().slice(0, 10);
@@ -170,8 +168,6 @@ const selectedRound = ref<string | null>(null);
 
 const availableSources = computed(() => [...new Set(resultEntries.value.map((e) => e.source).filter(Boolean))]);
 const availableCategories = computed(() => [...new Set(resultEntries.value.map((e) => e.categoryId).filter(Boolean))]);
-
-const allItems = computed(() => resultEntries.value.flatMap((e) => e.items));
 
 const filteredGroups = computed(() => {
   return resultEntries.value
@@ -231,14 +227,19 @@ watch(rounds, (newRounds) => {
 
 const flatItems = computed(() => filteredGroups.value.flatMap((g: any) => g.items));
 
-const { getAllowedKeys } = useCategoryFields();
+const { getAllowedKeys, getFieldOrder } = useCategoryFields();
 
 function getColumns(items: any[], categoryId?: string): string[] {
   if (!items.length) return [];
   const allKeys = Object.keys(items[0]);
   if (!categoryId) return allKeys;
   const allowed = getAllowedKeys(categoryId);
-  return allKeys.filter((k) => allowed.has(k));
+  const order = getFieldOrder(categoryId);
+  const filtered = allKeys.filter((k) => allowed.has(k));
+  return [...filtered].sort((a, b) => {
+    const ai = order.indexOf(a); const bi = order.indexOf(b);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
 }
 
 async function fetchResults() {

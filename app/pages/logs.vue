@@ -15,7 +15,7 @@
     <v-row class="mb-4" align="center" dense>
       <v-col cols="12" sm="auto">
         <v-text-field v-model="selectedDate" type="date" label="วันที่" variant="outlined" density="compact"
-          hide-details style="min-width: 180px" @change="fetchAll" />
+          hide-details style="min-width: 180px" @change="fetchAll" clearable />
       </v-col>
       <v-col cols="auto">
         <v-btn color="primary" variant="tonal" prepend-icon="mdi-refresh" :loading="loading"
@@ -211,13 +211,13 @@
             <span class="text-caption">{{ entryDomain(item) }}</span>
           </template>
           <template #[`item.screenshotFile`]="{ item }">
-            <span class="text-caption text-medium-emphasis">{{ item.screenshotFile ?? '—' }}</span>
+            <span class="text-caption text-medium-emphasis">{{ item.screenshotFile ?? '-' }}</span>
           </template>
           <template #[`item.error`]="{ item }">
             <span v-if="item.error" class="text-error text-caption"
               style="max-width:200px; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">{{
                 item.error }}</span>
-            <span v-else class="text-disabled">—</span>
+            <span v-else class="text-disabled">-</span>
           </template>
           <template #[`item.durationMs`]="{ item }">
             <span class="text-caption">{{ item.durationMs.toLocaleString() }} ms</span>
@@ -227,7 +227,7 @@
     </template>
 
     <!-- Detail dialog -->
-    <v-dialog v-model="detailOpen" max-width="700">
+    <v-dialog v-model="detailOpen" max-width="860" scrollable>
       <v-card v-if="detailEntry" rounded="lg">
         <v-card-title class="d-flex align-center pa-4">
           <v-chip :color="detailEntry.httpStatus === 200 ? 'success' : 'error'" label class="mr-3">{{
@@ -260,11 +260,36 @@
                     <v-btn :href="`/api/data?file=${v}`" target="_blank" icon="mdi-code-json" size="x-small"
                       variant="text" />
                   </span>
-                  <span v-else :class="k === 'error' && v ? 'text-error' : ''">{{ v ?? '—' }}</span>
+                  <span v-else :class="k === 'error' && v ? 'text-error' : ''">{{ v ?? '-' }}</span>
                 </td>
               </tr>
             </tbody>
           </v-table>
+
+          <!-- Extracted Items -->
+          <template v-if="detailEntry.dataFile">
+            <v-divider class="my-4" />
+            <div class="mb-3 d-flex align-center ga-2">
+              ข้อมูลที่ Gemini ดึงได้
+            </div>
+            <v-row v-if="detailItems.length" dense>
+              <v-col v-for="(item, i) in detailItems" :key="i" cols="12">
+                <v-card variant="tonal" color="surface-variant" rounded="lg" class="pa-3 text-body">
+                  <v-row dense>
+                    <v-col v-for="[fk, fv] in Object.entries(item).filter(([, v]) => v != null && v !== '')" :key="fk"
+                      cols="6" sm="4">
+                      <div class="text-medium-emphasis">{{ fk }}</div>
+                      <div class="font-weight-medium">{{ fv }}</div>
+                    </v-col>
+                  </v-row>
+                </v-card>
+              </v-col>
+            </v-row>
+            <v-card v-else-if="!detailItemsLoading" variant="outlined" rounded="lg"
+              class="pa-3 text-center text-disabled text-body-2">
+              ไม่มีข้อมูล
+            </v-card>
+          </template>
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -328,10 +353,21 @@ const entryHeaders = [
 // Detail dialog
 const detailOpen = ref(false);
 const detailEntry = ref<any>(null);
+const detailItems = ref<any[]>([]);
+const detailItemsLoading = ref(false);
 
-function openDetail(item: any) {
+async function openDetail(item: any) {
   detailEntry.value = item;
+  detailItems.value = [];
   detailOpen.value = true;
+  if (item.dataFile) {
+    detailItemsLoading.value = true;
+    try {
+      const data = await $fetch<any>(`/api/data?file=${item.dataFile}`);
+      detailItems.value = Array.isArray(data) ? data : [data];
+    } catch { /* no data */ }
+    finally { detailItemsLoading.value = false; }
+  }
 }
 
 const detailRows = computed(() => {
