@@ -9,6 +9,8 @@ export interface ResultEntry {
   categoryId: string | null
   screenshotFile: string | null
   items: Record<string, any>[]
+  roundId?: string
+  searchQuery?: string
 }
 
 function todayStr(): string {

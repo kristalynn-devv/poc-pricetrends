@@ -12,7 +12,6 @@ export interface LogEntry {
   httpStatus: number
   screenshotFile: string | null
   dataFile: string | null
-  itemsExtracted: number | null
   error: string | null
   errorType: 'timeout' | 'screenshot' | 'extraction' | 'parse' | 'config' | null
 }
@@ -54,11 +53,10 @@ export interface DailySummary {
   total: number
   success: number
   failed: number
-  totalItemsExtracted: number
   avgDurationMs: number
   errors: Array<{ timestamp: string; url: string; source: string; searchQuery?: string; errorType: string | null; error: string }>
   bySource: Record<string, { total: number; success: number; failed: number }>
-  byCategory: Record<string, { total: number; success: number; itemsExtracted: number }>
+  byCategory: Record<string, { total: number; success: number }>
 }
 
 export async function readDailySummary(dateStr?: string): Promise<DailySummary> {
@@ -80,7 +78,6 @@ export async function readDailySummary(dateStr?: string): Promise<DailySummary> 
     total: entries.length,
     success: 0,
     failed: 0,
-    totalItemsExtracted: 0,
     avgDurationMs: 0,
     errors: [],
     bySource: {},
@@ -92,7 +89,6 @@ export async function readDailySummary(dateStr?: string): Promise<DailySummary> 
     const ok = e.httpStatus >= 200 && e.httpStatus < 300 && !e.error
     if (ok) {
       summary.success++
-      summary.totalItemsExtracted += e.itemsExtracted ?? 0
     } else {
       summary.failed++
       summary.errors.push({
@@ -113,11 +109,10 @@ export async function readDailySummary(dateStr?: string): Promise<DailySummary> 
 
     // by category
     const cat = e.categoryId ?? 'unknown'
-    summary.byCategory[cat] ??= { total: 0, success: 0, itemsExtracted: 0 }
+    summary.byCategory[cat] ??= { total: 0, success: 0 }
     summary.byCategory[cat].total++
     if (ok) {
       summary.byCategory[cat].success++
-      summary.byCategory[cat].itemsExtracted += e.itemsExtracted ?? 0
     }
   }
 

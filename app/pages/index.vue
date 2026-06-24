@@ -5,9 +5,12 @@
         <h1 class="text-h4 font-weight-bold">Price Extractor</h1>
         <p class="text-body-2 text-medium-emphasis mt-1">ค้นหาราคาสินค้าแยกตามหมวด</p>
       </v-col>
-      <v-col cols="auto">
-        <v-btn variant="text" prepend-icon="mdi-table-eye" to="/entries" size="small">รายการข้อมูล</v-btn>
-        <v-btn variant="text" prepend-icon="mdi-text-box-outline" to="/logs" size="small">System Logs</v-btn>
+      <v-col cols="auto" class="d-flex align-center ga-1">
+        <v-btn variant="text" prepend-icon="mdi-table-eye" to="/entries" size="small"
+          class="text-none">รายการข้อมูล</v-btn>
+        <v-btn variant="text" prepend-icon="mdi-text-box-outline" to="/logs" size="small" class="text-none">System
+          Logs</v-btn>
+        <v-btn icon="mdi-tune" size="small" variant="text" @click="screenshotCfgOpen = true" />
       </v-col>
     </v-row>
 
@@ -19,53 +22,82 @@
           <span>{{ grp.label }}</span>
           <span class="text-caption text-medium-emphasis ml-2">หมวด {{ grp.ids.join(', ') }}</span>
           <v-spacer />
-          <div class="d-flex align-center ga-2 me-2" @click.stop>
+          <div class="d-flex align-center ga-1 me-2" @click.stop>
             <span class="text-caption text-medium-emphasis">{{grp.sources.filter(s => s.apiRoute).length}}/{{
               grp.sources.length }} แหล่งพร้อมใช้</span>
-            <v-chip v-if="grp.running" size="x-small" color="warning" variant="tonal">กำลังค้นหา...</v-chip>
-            <v-chip v-else-if="Object.values(grp.runs).some(r => r.done)" size="x-small" color="primary"
-              variant="tonal">
-              {{Object.values(grp.runs).reduce((n, r) => n + r.results.flatMap(res => res.items).length, 0)}} รายการ
-            </v-chip>
+            <template v-if="Object.values(grp.runs).some(r => r.done)">
+              <v-chip size="x-small" color="primary" variant="tonal">
+                {{Object.values(grp.runs).reduce((n, r) => n + r.results.flatMap(res => res.items).length, 0)}} รายการ
+              </v-chip>
+              <v-btn v-if="grp.lastRoundId" size="x-small" variant="tonal" color="success"
+                prepend-icon="mdi-open-in-new"
+                :to="`/entries?round=${grp.lastRoundId}&date=${new Date().toISOString().slice(0,10)}`"
+                @click.stop>
+                ดูผลลัพธ์
+              </v-btn>
+            </template>
           </div>
         </v-expansion-panel-title>
 
         <v-expansion-panel-text class="pa-0">
           <!-- Query list + limit -->
           <v-card-text class="pb-2">
-            <v-row dense align="center" class="mb-2">
-              <v-col cols="12" md="8">
-                <v-text-field v-model="grp.newQuery" :label="`เพิ่มสินค้าค้นหา ${grp.label}`"
-                  prepend-inner-icon="mdi-plus" variant="outlined" density="compact" hide-details
-                  :disabled="grp.running" @keyup.enter="addQuery(grp)">
+            <!-- Required fields row -->
+            <div class="d-flex align-center ga-2 mb-2">
+              <v-text-field v-for="field in grp.requiredFields" :key="field.key" v-model="grp.fieldValues[field.key]"
+                :label="field.label" variant="outlined" density="compact" hide-details :disabled="grp.running"
+                style="flex:1; min-width:0" @keyup.enter="addQuery(grp)" />
+              <v-btn color="secondary" variant="tonal" size="small" class="text-none" height="40px"
+                :disabled="grp.requiredFields.every(f => !grp.fieldValues[f.key]?.trim()) || grp.running"
+                prepend-icon="mdi-plus" @click.stop="addQuery(grp)">
+                เพิ่มรายการ
+              </v-btn>
+            </div>
+
+            <!-- Active optional fields -->
+            <v-row v-if="grp.activeOptionals.length > 0" dense align="center" class="mb-1">
+              <v-col v-for="key in grp.activeOptionals" :key="key" cols="6" md="3">
+                <v-text-field v-model="grp.fieldValues[key]"
+                  :label="grp.optionalFields.find(f => f.key === key)?.label ?? key" variant="outlined"
+                  density="compact" hide-details :disabled="grp.running" @keyup.enter="addQuery(grp)">
                   <template #append-inner>
-                    <v-btn size="x-small" variant="tonal" :disabled="!grp.newQuery.trim() || grp.running"
-                      @click.stop="addQuery(grp)">
-                      เพิ่ม
-                    </v-btn>
+                    <v-icon size="x-small" class="cursor-pointer"
+                      @click.stop="removeOptionalField(grp, key)">mdi-close</v-icon>
                   </template>
                 </v-text-field>
               </v-col>
-              <v-col cols="6" md="2">
-                <v-select v-model="grp.limit" :items="[3, 5, 10]" label="จำนวน/แหล่ง/คำ" variant="outlined"
-                  density="compact" hide-details :disabled="grp.running" />
+            </v-row>
+
+            <!-- Optional field chips (suggestions) -->
+            <div v-if="grp.optionalFields.some(f => !grp.activeOptionals.includes(f.key))"
+              class="d-flex flex-wrap ga-1 mb-2" @click.stop> <v-chip
+                v-for="field in grp.optionalFields.filter(f => !grp.activeOptionals.includes(f.key))" :key="field.key"
+                size="small" variant="outlined" color="primary" :disabled="grp.running" prepend-icon="mdi-plus"
+                @click.stop="addOptionalField(grp, field.key)">
+                {{ field.label }}
+              </v-chip>
+            </div>
+
+            <!-- Run button row -->
+            <v-row dense align="center" class="mb-2">
+              <v-col>
+                <div v-if="grp.queries.length > 0" class="d-flex flex-wrap ga-1" @click.stop>
+                  <v-chip v-for="(q, qi) in grp.queries" :key="q" :model-value="true" size="small" closable :disabled="grp.running"
+                    @click:close="grp.queries.splice(qi, 1)">
+                    {{ q }}
+                  </v-chip>
+                </div>
+                <p v-else class="text-caption text-medium-emphasis mb-0">ยังไม่มีรายการค้นหา — กรอกข้อมูลแล้วกด
+                  "เพิ่มรายการ"</p>
               </v-col>
-              <v-col cols="6" md="2" class="d-flex align-center">
-                <v-btn color="primary" block :loading="grp.running"
+              <v-col cols="auto" class="d-flex align-center ga-2">
+                <v-btn color="primary" :loading="grp.running" height="40px"
                   :disabled="grp.queries.length === 0 || !grp.sources.some(s => s.apiRoute && grp.enabled[s.name])"
                   prepend-icon="mdi-play" @click="runGroup(grp)">
                   ค้นหา
                 </v-btn>
               </v-col>
             </v-row>
-            <!-- Query chips -->
-            <div v-if="grp.queries.length > 0" class="d-flex flex-wrap ga-1" @click.stop>
-              <v-chip v-for="(q, qi) in grp.queries" :key="qi" size="small" closable :disabled="grp.running"
-                @click:close="grp.queries.splice(qi, 1)">
-                {{ q }}
-              </v-chip>
-            </div>
-            <p v-else class="text-caption text-medium-emphasis mb-0">ยังไม่มีรายการค้นหา</p>
           </v-card-text>
 
           <!-- Source list -->
@@ -75,13 +107,14 @@
               <v-divider v-if="si > 0" />
               <v-list-item class="">
                 <template #prepend>
-                  <div class="d-flex align-center ga-2 me-2">
+                  <div class="d-flex align-center ga-1 me-2">
                     <span class="text-caption text-medium-emphasis">{{ si + 1 }}.</span>
-                    <v-checkbox-btn v-if="src.apiRoute" v-model="grp.enabled[src.name]" :disabled="grp.running" density="compact" hide-details />
+                    <v-checkbox-btn v-if="src.apiRoute" v-model="grp.enabled[src.name]" :disabled="grp.running"
+                      density="compact" hide-details />
                   </div>
                 </template>
 
-                <v-list-item-title class="text-body-2 d-flex align-center ga-1">
+                <v-list-item-title class="text-body-2 font-weight-regular d-flex align-center ga-1">
                   <span>{{ src.name }}</span>
                   <v-chip v-if="src.apiRoute" size="x-small" color="success" variant="tonal">Ready</v-chip>
                   <v-chip v-else size="x-small" color="grey" variant="tonal">Not Ready</v-chip>
@@ -108,7 +141,62 @@
       </v-expansion-panel>
     </v-expansion-panels>
 
-    <ImageLightbox v-model="lightboxOpen" :src="lightboxSrc" />
+    <!-- ── Config Dialog ── -->
+    <v-dialog v-model="screenshotCfgOpen" max-width="400">
+      <v-card>
+        <v-card-title class="d-flex align-center ga-1 pt-4 px-4">
+          <v-icon size="small">mdi-tune</v-icon>
+          <span class="">การตั้งค่า</span>
+          <v-spacer />
+          <v-btn icon="mdi-close" size="small" variant="text" @click="screenshotCfgOpen = false" />
+        </v-card-title>
+        <v-card-text class="px-4 pb-2">
+          <v-form @submit.prevent="screenshotCfgOpen = false">
+            <v-row dense class="mb-2">
+              <v-col cols="5">
+                <v-text-field v-model.number="screenshotCfg.viewportWidth" label="Width (px)" type="number"
+                  variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="2" class="d-flex align-center justify-center">
+                <span class="text-body-2 text-medium-emphasis">×</span>
+              </v-col>
+              <v-col cols="5">
+                <v-text-field v-model.number="screenshotCfg.viewportHeight" label="Height (px)" type="number"
+                  variant="outlined" density="compact" hide-details :disabled="screenshotCfg.fullPage" />
+              </v-col>
+            </v-row>
+            <v-row dense align="center" class="mb-2">
+              <v-col cols="6">
+                <v-text-field v-model.number="screenshotCfg.quality" label="Quality (1–100)" type="number"
+                  variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="6" class="d-flex justify-end">
+                <v-switch v-model="screenshotCfg.fullPage" label="เต็มจอ" density="compact" hide-details
+                  color="primary" />
+              </v-col>
+            </v-row>
+            <v-row dense class="mb-2">
+              <v-col cols="7">
+                <v-text-field v-model.number="screenshotCfg.cropHeight" label="Crop height (px)" type="number"
+                  variant="outlined" density="compact" hide-details clearable placeholder="ไม่ตัด" />
+              </v-col>
+            </v-row>
+            <v-divider class="mb-3" />
+            <v-row dense>
+              <v-col cols="6">
+                <v-combobox v-model="screenshotCfg.limit" :items="[1, 3, 5, 10]" label="จำนวนชิ้น/แหล่ง/คำค้น"
+                  variant="outlined" density="compact" hide-details :return-object="false" type="number" />
+              </v-col>
+            </v-row>
+          </v-form>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-4">
+          <v-btn variant="text" size="small" class="text-none" @click="resetScreenshotCfg">Reset</v-btn>
+          <v-spacer />
+          <v-btn color="primary" size="small" class="text-none" @click="screenshotCfgOpen = false">ตกลง</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- ── Source detail dialog ── -->
     <v-dialog v-model="detailOpen" fullscreen transition="dialog-bottom-transition">
@@ -125,8 +213,6 @@
             screenshot {{ detailRun.summary.screenshotOk }}/{{ detailRun.summary.total }}
             · extract {{ detailRun.summary.extractOk }}/{{ detailRun.summary.total }}
           </span>
-          <v-chip v-if="detailRun.loading" size="small" color="warning" variant="tonal"
-            class="mr-2">กำลังประมวลผล...</v-chip>
           <v-btn v-if="detailExtracted.length > 0" size="small" variant="tonal" prepend-icon="mdi-download" class="mr-2"
             @click="downloadJson(detailExtracted.map(({ _screenshot: _s, ...r }) => r))">JSON</v-btn>
         </v-toolbar>
@@ -156,8 +242,7 @@
           </template>
 
           <!-- Bot-block screenshot -->
-          <v-img v-if="detailRun.searchPageScreenshot" :src="`data:image/jpeg;base64,${detailRun.searchPageScreenshot}`"
-            max-height="360" contain class="bg-grey-lighten-4 rounded" />
+          <ScreenshotImg v-if="detailRun.searchPageScreenshot" :src="detailRun.searchPageScreenshot" max-height="360" />
 
           <!-- Error -->
           <v-alert v-if="detailRun.error" type="error" density="compact" :text="detailRun.error" class="alert-compact"
@@ -167,10 +252,10 @@
           <v-data-table v-if="detailExtracted.length > 0" :headers="detailHeaders" :items="detailExtracted"
             density="compact" class="text-body-2" style="flex:1">
             <template #[`item._screenshot`]="{ item }">
-              <v-img v-if="item._screenshot" :src="`data:image/jpeg;base64,${item._screenshot}`" width="100" height="70"
-                cover class="my-1 rounded cursor-pointer"
-                @click="lightboxSrc = `data:image/jpeg;base64,${item._screenshot}`; lightboxOpen = true" />
-              <span v-else class="text-medium-emphasis text-caption">—</span>
+              <ScreenshotImg :src="item._screenshot" thumbnail class="my-1" />
+            </template>
+            <template #[`item.price`]="{ item }">
+              <span>{{ item.price != null ? Number(item.price).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—' }}</span>
             </template>
           </v-data-table>
         </v-container>
@@ -180,6 +265,8 @@
 </template>
 
 <script setup lang="ts">
+import { useCategoryFields } from '~/composables/useCategoryFields';
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface ItemResult {
   index: number;
@@ -212,21 +299,51 @@ interface SourceDef {
   apiRoute?: string;
 }
 
+interface FieldDef {
+  key: string;
+  label: string;
+}
+
 interface CategoryGroup {
   label: string;
   ids: string[];
   sources: SourceDef[];
   queries: string[];
   newQuery: string;
-  limit: number;
   running: boolean;
   enabled: Record<string, boolean>;
   runs: Record<string, SourceRun>;
+  requiredFields: FieldDef[];
+  optionalFields: FieldDef[];
+  fieldValues: Record<string, string>;
+  activeOptionals: string[];
+  lastRoundId?: string;
 }
 
 // ── Shared ─────────────────────────────────────────────────────────────────────
-const lightboxOpen = ref(false);
-const lightboxSrc = ref('');
+const screenshotCfgOpen = ref(false);
+
+// ── Screenshot config ──────────────────────────────────────────────────────────
+const SCREENSHOT_CFG_KEY = 'screenshotCfg_v1'
+const SCREENSHOT_CFG_DEFAULTS = {
+  viewportWidth: 1920, viewportHeight: 1080, fullPage: true, quality: 85, cropHeight: undefined as number | undefined,
+  clip: { enabled: false, x: 0, y: 0, width: 1920, height: 1080 },
+  limit: 1,
+}
+function loadScreenshotCfg() {
+  try {
+    const raw = localStorage.getItem(SCREENSHOT_CFG_KEY)
+    if (raw) return { ...SCREENSHOT_CFG_DEFAULTS, ...JSON.parse(raw), clip: { ...SCREENSHOT_CFG_DEFAULTS.clip, ...(JSON.parse(raw).clip ?? {}) } }
+  } catch {}
+  return { ...SCREENSHOT_CFG_DEFAULTS, clip: { ...SCREENSHOT_CFG_DEFAULTS.clip } }
+}
+const screenshotCfg = reactive(loadScreenshotCfg())
+watch(screenshotCfg, (val) => localStorage.setItem(SCREENSHOT_CFG_KEY, JSON.stringify(val)), { deep: true })
+function resetScreenshotCfg() {
+  Object.assign(screenshotCfg, { ...SCREENSHOT_CFG_DEFAULTS, clip: undefined })
+  Object.assign(screenshotCfg.clip, SCREENSHOT_CFG_DEFAULTS.clip)
+  localStorage.removeItem(SCREENSHOT_CFG_KEY)
+}
 
 const openPanels = ref<number[]>([0, 1, 2, 3, 4]);
 
@@ -249,9 +366,15 @@ const detailExtracted = computed(() => {
   return srcExtracted(grp, detailSrcName.value);
 });
 
+const { getAllowedKeys } = useCategoryFields();
+
 const detailHeaders = computed(() => {
   if (detailExtracted.value.length === 0) return [];
-  const dataKeys = Object.keys(detailExtracted.value[0]).filter((k) => k !== '_screenshot' && k !== '_source');
+  const grp = categoryGroups.value.find((g: any) => g.label === detailGrpLabel.value);
+  const categoryId = grp?.ids?.[0] as string | undefined;
+  const allowed = categoryId ? getAllowedKeys(categoryId) : null;
+  const allKeys = Object.keys(detailExtracted.value[0]).filter((k) => k !== '_screenshot' && k !== '_source');
+  const dataKeys = allowed ? allKeys.filter((k) => allowed.has(k)) : allKeys;
   return [
     { title: 'รูป', key: '_screenshot', sortable: false, width: 116 },
     ...dataKeys.map((k) => ({ title: k, key: k, sortable: true })),
@@ -296,17 +419,91 @@ function makeRun(): SourceRun {
   return { loading: false, done: false, results: [], logs: [], summary: null, error: '', searchPageScreenshot: '' };
 }
 
+const CATEGORY_FIELDS: Record<string, { required: FieldDef[]; optional: FieldDef[]; }> = {
+  '103': {
+    required: [{ key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }],
+    optional: [
+      { key: 'dialColor', label: 'สีหน้าปัด' },
+      { key: 'caseMaterial', label: 'วัสดุตัวเรือน' },
+      { key: 'strapMaterial', label: 'วัสดุสายนาฬิกา' },
+      { key: 'movementType', label: 'ระบบ' },
+      { key: 'condition', label: 'สภาพ' },
+    ],
+  },
+  '106': {
+    required: [{ key: 'title', label: 'ชื่อ/ยี่ห้อ' }, { key: 'material', label: 'วัสดุ' }],
+    optional: [
+      { key: 'moldType', label: 'พิมพ์' },
+      { key: 'year', label: 'ปี' },
+      { key: 'weight', label: 'น้ำหนัก' },
+    ],
+  },
+  '107': {
+    required: [{ key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }],
+    optional: [
+      { key: 'itemType', label: 'ประเภท' },
+      { key: 'capacity', label: 'ความจุ/สเปก' },
+      { key: 'condition', label: 'สภาพ' },
+    ],
+  },
+  '108': {
+    required: [{ key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }],
+    optional: [
+      { key: 'itemType', label: 'ประเภท' },
+      { key: 'condition', label: 'สภาพ' },
+      { key: 'year', label: 'ปี' },
+    ],
+  },
+  '111': {
+    required: [{ key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }],
+    optional: [
+      { key: 'itemType', label: 'ประเภท' },
+      { key: 'condition', label: 'สภาพ' },
+    ],
+  },
+};
+
+function getFields(ids: string[]) {
+  return CATEGORY_FIELDS[ids[0]] ?? {
+    required: [{ key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }],
+    optional: [],
+  };
+}
+
 function makeGroup(label: string, ids: string[], sources: SourceDef[]): CategoryGroup {
   const enabled: Record<string, boolean> = {};
   sources.forEach((s) => { enabled[s.name] = false; });
-  return { label, ids, sources, queries: [], newQuery: '', limit: 5, running: false, enabled, runs: {} };
+  const { required, optional } = getFields(ids);
+  const fieldValues: Record<string, string> = {};
+  required.forEach((f) => { fieldValues[f.key] = ''; });
+  return {
+    label, ids, sources, queries: [], newQuery: '', running: false, enabled, runs: {},
+    requiredFields: required, optionalFields: optional, fieldValues, activeOptionals: [],
+  };
+}
+
+function addOptionalField(grp: CategoryGroup, key: string) {
+  if (!grp.activeOptionals.includes(key)) {
+    grp.activeOptionals.push(key);
+    grp.fieldValues[key] = '';
+  }
+}
+
+function removeOptionalField(grp: CategoryGroup, key: string) {
+  grp.activeOptionals = grp.activeOptionals.filter((k) => k !== key);
+  delete grp.fieldValues[key];
 }
 
 function addQuery(grp: CategoryGroup) {
-  const q = grp.newQuery.trim();
-  if (!q || grp.queries.includes(q)) return;
-  grp.queries.push(q);
-  grp.newQuery = '';
+  const allFields = [
+    ...grp.requiredFields,
+    ...grp.optionalFields.filter((f) => grp.activeOptionals.includes(f.key)),
+  ];
+  const parts = allFields.map((f) => grp.fieldValues[f.key]?.trim()).filter(Boolean);
+  if (parts.length === 0) return;
+  const q = parts.join(' ');
+  if (!grp.queries.includes(q)) grp.queries.push(q);
+  allFields.forEach((f) => { grp.fieldValues[f.key] = ''; });
 }
 
 const categoryGroups = ref<CategoryGroup[]>([
@@ -318,7 +515,7 @@ const categoryGroups = ref<CategoryGroup[]>([
     { name: 'Siam Watch Club', url: 'https://www.siamwatchclub.com', apiRoute: '/api/siamwatchclub-search' },
     { name: 'Komehyo (นาฬิกา)', url: 'https://www.komehyo.co.th', apiRoute: '/api/komehyo-search' },
   ]),
-  makeGroup('พระ/วัตถุมงคล', ['106'], [
+  makeGroup('พระ / วัตถุมงคล', ['106'], [
     { name: 'Thaprachan', url: 'https://www.thaprachan.com/', apiRoute: '/api/thaprachan-search' },
     { name: 'Wutdychonburi', url: 'https://wutdychonburi.com/', apiRoute: '/api/wutdychonburi-search' },
     { name: 'Prapantip', url: 'https://www.prapantip.com/amulet/', apiRoute: '/api/prapantip-search' },
@@ -356,7 +553,7 @@ function srcExtracted(grp: CategoryGroup, srcName: string) {
   const multiQuery = grp.queries.length > 1;
   return run.results.flatMap((r) => {
     const base = {
-      _screenshot: r.base64 ?? '',
+      _screenshot: r.filename ? `/api/screenshot?file=${r.filename}` : '',
       ...(multiQuery ? { _query: (r as ItemResult & { _query?: string; })._query ?? '' } : {}),
       _source: r.filename ?? r.url,
     };
@@ -408,7 +605,7 @@ const API_CATEGORY_MAP: Record<string, string> = {
   '/api/brandnamevoyage-search': '108',
 };
 
-async function runSourceQuery(grp: CategoryGroup, src: SourceDef, query: string, qi: number) {
+async function runSourceQuery(grp: CategoryGroup, src: SourceDef, query: string, qi: number, roundId?: string) {
   const run = grp.runs[src.name];
   const categoryId = API_CATEGORY_MAP[src.apiRoute!] ?? grp.ids[0];
   const prefix = grp.queries.length > 1 ? `[${qi + 1}/${grp.queries.length}] ` : '';
@@ -420,7 +617,7 @@ async function runSourceQuery(grp: CategoryGroup, src: SourceDef, query: string,
     const res = await fetch(src.apiRoute!, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, categoryId, limit: grp.limit }),
+      body: JSON.stringify({ query, categoryId, limit: Number(screenshotCfg.limit) || 1, screenshotConfig: screenshotCfg, roundId }),
       signal: AbortSignal.timeout(300_000),
     });
     if (!res.body) throw new Error('No response stream');
@@ -466,7 +663,7 @@ async function runSourceQuery(grp: CategoryGroup, src: SourceDef, query: string,
   }
 }
 
-async function runSource(grp: CategoryGroup, src: SourceDef) {
+async function runSource(grp: CategoryGroup, src: SourceDef, roundId?: string) {
   if (!src.apiRoute || grp.queries.length === 0) return;
   if (!grp.runs[src.name]) grp.runs[src.name] = makeRun();
   const run = grp.runs[src.name];
@@ -480,7 +677,7 @@ async function runSource(grp: CategoryGroup, src: SourceDef) {
 
   try {
     for (let qi = 0; qi < grp.queries.length; qi++) {
-      await runSourceQuery(grp, src, grp.queries[qi], qi);
+      await runSourceQuery(grp, src, grp.queries[qi], qi, roundId);
     }
   } finally {
     run.loading = false;
@@ -492,10 +689,12 @@ async function runSource(grp: CategoryGroup, src: SourceDef) {
 async function runGroup(grp: CategoryGroup) {
   if (grp.queries.length === 0) return;
   grp.running = true;
+  const roundId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+  grp.lastRoundId = roundId;
   try {
     const enabledSources = grp.sources.filter((s) => s.apiRoute && grp.enabled[s.name]);
     for (const src of enabledSources) {
-      await runSource(grp, src);
+      await runSource(grp, src, roundId);
     }
   } finally {
     grp.running = false;

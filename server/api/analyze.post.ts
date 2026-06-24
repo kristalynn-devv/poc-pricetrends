@@ -4,6 +4,9 @@ import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog, saveItems, extractDomain } from '../utils/logger'
 import type { LogEntry } from '../utils/logger'
+import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
+import type { ScreenshotConfig } from '../utils/screenshotConfig'
+import { takeScreenshot } from '../utils/browserUtils'
 
 
 const SOURCE_CODES: Record<string, string> = {
@@ -52,7 +55,7 @@ const CATEGORY_FIELDS: Record<string, string[]> = {
 
 const FIELD_DESCRIPTIONS: Record<string, string> = {
   title: 'ชื่อสินค้า',
-  price: 'ตัวเลขราคา (ไม่มีจุลภาค ไม่มีสัญลักษณ์สกุลเงิน) | null',
+  price: 'ตัวเลขจำนวนเต็ม — ตัดจุลภาค (,) ออก, จุด (.) คือ decimal point ให้ปัดทิ้ง ไม่ใช่ thousands separator เช่น 1,560,000.00 → 1560000 | 1560000.00 → 1560000 | null',
   currency: 'สกุลเงิน เช่น THB, USD, JPY, EUR | null',
   condition: '"new" | "used" | "unknown" | null',
   brand: 'แบรนด์ เช่น Rolex, Apple',
@@ -70,11 +73,13 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
 }
 
 export default defineEventHandler(async (event) => {
-  const { url, categoryId, template } = await readBody<{
+  const { url, categoryId, template, screenshotConfig: screenshotConfigRaw } = await readBody<{
     url: string
     categoryId?: string
     template?: Record<string, string>
+    screenshotConfig?: Partial<ScreenshotConfig>
   }>(event)
+  const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(screenshotConfigRaw))
 
   if (!url) throw createError({ statusCode: 400, message: 'url required' })
 
@@ -84,8 +89,7 @@ export default defineEventHandler(async (event) => {
     const logEntry: LogEntry = {
       timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
       durationMs: 0, httpStatus: 500, screenshotFile: null,
-      dataFile: null,
-      itemsExtracted: null, error: 'GEMINI_API_KEY not configured', errorType: 'config',
+      dataFile: null, error: 'GEMINI_API_KEY not configured', errorType: 'config',
     }
     await appendLog(logEntry).catch(() => {})
     throw createError({ statusCode: 500, message: 'GEMINI_API_KEY not configured' })
@@ -107,12 +111,12 @@ export default defineEventHandler(async (event) => {
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
       locale: 'en-US',
       extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
+      viewport: screenshotCfg.viewport,
     })
     await context.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined })
     })
     const page = await context.newPage()
-    await page.setViewportSize({ width: 1920, height: 1080 })
     try {
       await page.goto(url, { waitUntil: 'load', timeout: 30000 })
     } catch (err: any) {
@@ -121,7 +125,6 @@ export default defineEventHandler(async (event) => {
         timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
         durationMs: Date.now() - startedAt, httpStatus: 504, screenshotFile: null,
         dataFile: null,
-        itemsExtracted: null,
         error: err?.message ?? 'Page load failed',
         errorType: isTimeout ? 'timeout' : 'screenshot',
       }).catch(() => {})
@@ -144,7 +147,7 @@ export default defineEventHandler(async (event) => {
     }
     await page.mouse.move(0, 0)
     await page.waitForTimeout(300)
-    const buffer = await page.screenshot({ fullPage: false, type: 'jpeg', quality: 90 })
+    const buffer = await takeScreenshot(page, screenshotCfg)
     base64 = buffer.toString('base64')
     const screenshotDir = join(process.cwd(), 'output', 'screenshots')
     await mkdir(screenshotDir, { recursive: true })
@@ -154,8 +157,7 @@ export default defineEventHandler(async (event) => {
       await appendLog({
         timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
         durationMs: Date.now() - startedAt, httpStatus: 500, screenshotFile: null,
-        dataFile: null,
-        itemsExtracted: null, error: err?.message ?? 'Screenshot failed', errorType: 'screenshot',
+        dataFile: null, error: err?.message ?? 'Screenshot failed', errorType: 'screenshot',
       }).catch(() => {})
       throw createError({ statusCode: 500, message: 'Screenshot failed' })
     }
@@ -197,8 +199,7 @@ ${schemaText}
     await appendLog({
       timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
       durationMs: Date.now() - startedAt, httpStatus: 502, screenshotFile: filename,
-      dataFile: null,
-      itemsExtracted: null, error: err?.message ?? 'Gemini extraction failed', errorType: 'extraction',
+      dataFile: null, error: err?.message ?? 'Gemini extraction failed', errorType: 'extraction',
     }).catch(() => {})
     throw createError({ statusCode: 502, message: 'Gemini extraction failed' })
   }
@@ -212,16 +213,14 @@ ${schemaText}
     await appendLog({
       timestamp: new Date().toISOString(), source: extractDomain(url), url,
       categoryId: cat, durationMs: Date.now() - startedAt, httpStatus: 200,
-      screenshotFile: filename, dataFile,
-      itemsExtracted: Array.isArray(items) ? items.length : 0, error: null, errorType: null,
+      screenshotFile: filename, dataFile, error: null, errorType: null,
     }).catch(() => {})
     return { filename, base64, mimeType, items }
   } catch {
     await appendLog({
       timestamp: new Date().toISOString(), source: extractDomain(url), url,
       categoryId: categoryId ?? null, durationMs: Date.now() - startedAt, httpStatus: 200,
-      screenshotFile: filename, dataFile: null,
-      itemsExtracted: 0, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse',
+      screenshotFile: filename, dataFile: null, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse',
     }).catch(() => {})
     return { filename, base64, mimeType, items: [], raw: text }
   }

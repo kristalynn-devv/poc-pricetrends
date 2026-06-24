@@ -1,4 +1,8 @@
 import { chromium } from 'playwright'
+import { writeFile, mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
+import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
+import { takeScreenshot } from '../utils/browserUtils'
 
 const SOURCE_CODES: Record<string, string> = {
   'chrono24.com': 'CHR',
@@ -34,7 +38,10 @@ function buildFilename(url: string, categoryId?: string): string {
 }
 
 export default defineEventHandler(async (event) => {
-  const { url, categoryId } = await readBody<{ url: string; categoryId?: string }>(event)
+  const { url, categoryId, screenshotConfig: screenshotConfigRaw } = await readBody<{
+    url: string; categoryId?: string; screenshotConfig?: import('../utils/screenshotConfig').ScreenshotConfig
+  }>(event)
+  const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(screenshotConfigRaw))
   if (!url) throw createError({ statusCode: 400, message: 'url required' })
 
   const browser = await chromium.launch({
@@ -55,8 +62,9 @@ export default defineEventHandler(async (event) => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined })
     })
     const page = await context.newPage()
-    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.setViewportSize(screenshotCfg.viewport)
     await page.goto(url, { waitUntil: 'load', timeout: 30000 })
+
     await page.waitForTimeout(3000)
     // dismiss common cookie/consent popups (best-effort, never throws)
     for (const selector of [
@@ -75,12 +83,12 @@ export default defineEventHandler(async (event) => {
     }
     await page.mouse.move(0, 0)
     await page.waitForTimeout(300)
-    const buffer = await page.screenshot({ fullPage: false, type: 'jpeg', quality: 80 })
-    return {
-      base64: buffer.toString('base64'),
-      mimeType: 'image/jpeg',
-      filename: buildFilename(url, categoryId),
-    }
+    const buffer = await takeScreenshot(page, screenshotCfg)
+    const filename = buildFilename(url, categoryId)
+    const screenshotDir = join(process.cwd(), 'output', 'screenshots')
+    await mkdir(screenshotDir, { recursive: true })
+    await writeFile(join(screenshotDir, filename), buffer)
+    return { filename, mimeType: 'image/jpeg' }
   } finally {
     await browser.close()
   }

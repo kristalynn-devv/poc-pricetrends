@@ -14,7 +14,7 @@ const CATEGORY_FIELDS: Record<string, string[]> = {
 
 const FIELD_DESCRIPTIONS: Record<string, string> = {
   title: 'ชื่อสินค้า',
-  price: 'ตัวเลขราคา (ไม่มีจุลภาค ไม่มีสัญลักษณ์สกุลเงิน) | null',
+  price: 'ตัวเลขจำนวนเต็ม — ตัดจุลภาค (,) ออก, จุด (.) คือ decimal point ให้ปัดทิ้ง ไม่ใช่ thousands separator เช่น 1,560,000.00 → 1560000 | 1560000.00 → 1560000 | null',
   currency: 'สกุลเงิน เช่น THB, USD, JPY, EUR | null',
   condition: '"new" | "used" | "unknown" | null',
   brand: 'แบรนด์ เช่น Rolex, Apple',
@@ -77,8 +77,7 @@ ${schemaText}
 
   const text = result.response.text().trim()
   try {
-    const items = JSON.parse(text)
-    return { items }
+    return { items: sanitizeItems(JSON.parse(text)) }
   } catch {
     return { items: [], raw: text }
   }
