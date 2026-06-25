@@ -1,29 +1,71 @@
+import { chromium } from 'playwright'
 import type { Page, Browser, BrowserContext } from 'playwright'
 import sharp from 'sharp'
 import { buildScreenshotOptions } from './screenshotConfig'
 
+export async function launchBrowser() {
+  return chromium.launch({
+    headless: true,
+    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-setuid-sandbox'],
+  })
+}
+
 export const DISMISS_SELECTORS = [
+  // Generic dialog buttons
   'dialog button:has-text("OK")',
   '[role="dialog"] button:has-text("OK")',
+  // English accept/agree variants
   'button:has-text("Accept all")',
   'button:has-text("Accept All")',
   'button:has-text("Accept cookies")',
+  'button:has-text("Accept Cookies")',
+  'button:has-text("Accept & Close")',
   'button:has-text("Agree")',
+  'button:has-text("I Agree")',
   'button:has-text("Accept")',
   'button:has-text("Got it")',
+  'button:has-text("OK")',
+  'button:has-text("Allow all")',
+  'button:has-text("Allow All")',
+  'button:has-text("Allow cookies")',
+  'button:has-text("Continue")',
+  'button:has-text("Close")',
+  // Thai variants
   'button:has-text("ยอมรับ")',
+  'button:has-text("ยอมรับทั้งหมด")',
   'button:has-text("ตกลง")',
+  'button:has-text("ปิด")',
+  'button:has-text("ยืนยัน")',
+  // Common cookie/consent container patterns
   '[class*="cookie-banner"] button',
+  '[class*="cookie_banner"] button',
+  '[class*="cookie-consent"] button',
+  '[class*="cookieconsent"] button',
+  '[class*="cookie-notice"] button',
+  '[class*="cookie-popup"] button',
+  '[class*="consent-banner"] button',
+  '[class*="gdpr"] button',
   '[id*="cookie-consent"] button',
+  '[id*="cookieconsent"] button',
+  '[id*="cookie-banner"] button',
+  '[id*="cookie-notice"] button',
+  '[id*="gdpr"] button',
+  // Overlay/modal close buttons
+  '[class*="modal"] button[class*="close"]',
+  '[class*="popup"] button[class*="close"]',
+  '[class*="overlay"] button[class*="close"]',
+  'button[aria-label="Close"]',
+  'button[aria-label="close"]',
+  'button[aria-label="ปิด"]',
 ]
 
 export async function dismissCookieBanner(page: Page): Promise<void> {
   for (const sel of DISMISS_SELECTORS) {
     try {
       const btn = page.locator(sel).first()
-      if (await btn.isVisible({ timeout: 800 })) {
+      if (await btn.isVisible({ timeout: 600 })) {
         await btn.click({ timeout: 3000 })
-        await page.waitForTimeout(800)
+        await page.waitForTimeout(600)
         return
       }
     } catch { }
@@ -70,6 +112,40 @@ export async function scrollForLazyContent(page: Page): Promise<void> {
   await page.waitForTimeout(800)
   await page.evaluate(() => window.scrollTo(0, 0))
   await page.waitForTimeout(300)
+}
+
+/**
+ * Standard pre-screenshot sequence: dismiss cookie banner, scroll for lazy content,
+ * dismiss again (banners that appear after scroll), then scroll back to top.
+ */
+export async function preparePageForScreenshot(page: Page): Promise<void> {
+  await dismissCookieBanner(page)
+  await page.mouse.move(0, 0)
+  await scrollForLazyContent(page)
+  await dismissCookieBanner(page)
+  await page.evaluate(() => window.scrollTo(0, 0))
+}
+
+/**
+ * Run async tasks with a concurrency cap. Each worker grabs the next task when free.
+ * Results are returned in original index order; onResult fires as each task completes.
+ */
+export async function runConcurrently<T>(
+  tasks: (() => Promise<T>)[],
+  concurrency: number,
+  onResult?: (result: T, index: number) => void,
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length)
+  let next = 0
+  async function worker() {
+    while (next < tasks.length) {
+      const i = next++
+      results[i] = await tasks[i]()
+      onResult?.(results[i], i)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker))
+  return results
 }
 
 /**

@@ -1,30 +1,17 @@
-import { chromium } from 'playwright'
+import type { ItemResult } from '../utils/routeHelpers'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog, saveItems } from '../utils/logger'
 import { appendResult } from '../utils/resultsStore'
-import { scrollForLazyContent , takeScreenshot, filterListingsByQuery} from '../utils/browserUtils'
+import { createStealthContext, takeScreenshot, filterListingsByQuery, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
-
-interface ItemResult {
-  index: number
-  url: string
-  filename: string | null
-  base64: string | null
-  screenshotOk: boolean
-  extractOk: boolean
-  items: unknown[]
-  raw?: string
-  error?: string
-}
 
 const SEARCH_BASE = 'https://www.shopbkk.com/search'
 
 function buildFilename(query: string, index: number): string {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const date = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)
   return `${date}_107_SBK_${String(index + 1).padStart(2, '0')}.jpg`
 }
 
@@ -47,34 +34,15 @@ export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'no-cache')
   setResponseHeader(event, 'X-Accel-Buffering', 'no')
 
-  const encoder = new TextEncoder()
-  let ctrl!: ReadableStreamDefaultController
-  const stream = new ReadableStream({ start(c) { ctrl = c } })
-
-  const send = (data: object) => {
-    try { ctrl.enqueue(encoder.encode(JSON.stringify(data) + '\n')) } catch { }
-  }
-
-  const emit = (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => {
-    send({ type: 'log', ts: new Date().toISOString(), level, msg, ...(data !== undefined ? { data } : {}) })
-    const prefix = `[shopbkk][${level.toUpperCase()}]`
-    if (level === 'error') console.error(prefix, msg, data ?? '')
-    else if (level === 'warn') console.warn(prefix, msg, data ?? '')
-    else console.log(prefix, msg, data ?? '')
-  }
-
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const geminiModel = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
+  const { stream, send, emit, close } = createStreamEmitter('shopbkk')
+  const geminiModel = createGeminiModel(apiKey)
   const screenshotDir = join(process.cwd(), 'output', 'screenshots')
   const results: ItemResult[] = []
 
   const searchUrl = `${SEARCH_BASE}?q=${encodeURIComponent(query)}&category_id=0&from=&min_price=&max_price=&sortby=name`
 
   ;(async () => {
-    const browser = await chromium.launch({
-      headless: true,
-      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-setuid-sandbox'],
-    })
+    const browser = await launchBrowser()
 
     try {
       emit('info', `Starting search`, { query, limit, url: searchUrl })
@@ -113,8 +81,9 @@ export default defineEventHandler(async (event) => {
           return
         }
 
-        for (let i = 0; i < detailUrls.length; i++) {
-          const url = detailUrls[i]
+        await page.close()
+
+        await runConcurrently(detailUrls.map((url, i) => async () => {
           const filename = buildFilename(query, i)
           const result: ItemResult = { index: i, url, filename: null, base64: null, screenshotOk: false, extractOk: false, items: [] }
           results.push(result)
@@ -122,16 +91,17 @@ export default defineEventHandler(async (event) => {
           const itemStart = Date.now()
           emit('info', `[${i + 1}/${detailUrls.length}] Loading`, { url })
 
+          const itemCtx = await createStealthContext(browser, screenshotCfg, 'th-TH')
+          const itemPage = await itemCtx.newPage()
           try {
-            await page.goto(url, { waitUntil: 'load', timeout: 30000 })
-            await page.waitForTimeout(2000)
+            await itemPage.goto(url, { waitUntil: 'load', timeout: 30000 })
+            await itemPage.waitForTimeout(2000)
 
-            await page.evaluate(() => {
+            await itemPage.evaluate(() => {
               document.querySelectorAll<HTMLElement>('.gadgetImage').forEach((el) => { el.style.display = 'none' })
             })
-            await page.mouse.move(0, 0)
-            await scrollForLazyContent(page)
-            const buffer = await takeScreenshot(page, screenshotCfg)
+            await preparePageForScreenshot(itemPage)
+            const buffer = await takeScreenshot(itemPage, screenshotCfg)
             const base64 = buffer.toString('base64')
             await writeFile(join(screenshotDir, filename), buffer)
             result.filename = filename
@@ -170,10 +140,12 @@ export default defineEventHandler(async (event) => {
             emit('error', `[${i + 1}] Failed`, { msg })
             const isTimeout = msg.includes('timeout') || msg.includes('Timeout')
             await appendLog({ timestamp: new Date().toISOString(), source: 'shopbkk', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: isTimeout ? 504 : 500, screenshotFile: null, error: msg, errorType: isTimeout ? 'timeout' : 'screenshot' }).catch(() => {})
+          } finally {
+            await itemCtx.close()
           }
 
           send((({ base64: _b, ...r }) => ({ type: 'result', ...r }))(result))
-        }
+        }), 3)
 
         await ctx.close()
       } catch (err) {
@@ -191,7 +163,7 @@ export default defineEventHandler(async (event) => {
       send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg })
       await browser.close().catch(() => {})
     } finally {
-      ctrl.close()
+      close()
     }
   })()
 

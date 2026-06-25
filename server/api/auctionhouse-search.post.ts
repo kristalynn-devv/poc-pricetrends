@@ -1,25 +1,14 @@
-import { chromium, type Browser, type BrowserContext } from 'playwright'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import type { Browser, BrowserContext } from 'playwright'
+import { chromium } from 'playwright'
+import type { ItemResult } from '../utils/routeHelpers'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog, saveItems } from '../utils/logger'
 import { mergeScreenshotConfig, type ScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
 import { appendResult } from '../utils/resultsStore'
-import { dismissCookieBanner, createStealthContext, scrollForLazyContent , takeScreenshot} from '../utils/browserUtils'
+import { dismissCookieBanner, createStealthContext, takeScreenshot, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
-
-interface ItemResult {
-  index: number
-  url: string
-  filename: string | null
-  base64: string | null
-  screenshotOk: boolean
-  extractOk: boolean
-  items: unknown[]
-  raw?: string
-  error?: string
-}
 
 const AH_BASE = 'https://www.auctionhouse.co.th'
 
@@ -33,7 +22,7 @@ const LISTING_LINK_SELECTORS = [
 ]
 
 function buildFilename(index: number, categoryId: string, url: string): string {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const date = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)
   const slugMatch = url.match(/\/([^/]+)\.html/)
   const slug = slugMatch ? slugMatch[1].slice(0, 30) : String(index + 1).padStart(2, '0')
   return `${date}_${categoryId}_AUC_${slug}.jpg`
@@ -110,24 +99,8 @@ export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'no-cache')
   setResponseHeader(event, 'X-Accel-Buffering', 'no')
 
-  const encoder = new TextEncoder()
-  let ctrl!: ReadableStreamDefaultController
-  const stream = new ReadableStream({ start(c) { ctrl = c } })
-
-  const send = (data: object) => {
-    try { ctrl.enqueue(encoder.encode(JSON.stringify(data) + '\n')) } catch { }
-  }
-
-  const emit = (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => {
-    send({ type: 'log', ts: new Date().toISOString(), level, msg, ...(data !== undefined ? { data } : {}) })
-    const prefix = `[auctionhouse][${level.toUpperCase()}]`
-    if (level === 'error') console.error(prefix, msg, data ?? '')
-    else if (level === 'warn') console.warn(prefix, msg, data ?? '')
-    else console.log(prefix, msg, data ?? '')
-  }
-
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const geminiModel = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
+  const { stream, send, emit, close } = createStreamEmitter('auctionhouse')
+  const geminiModel = createGeminiModel(apiKey)
   const screenshotDir = join(process.cwd(), 'output', 'screenshots')
   const results: ItemResult[] = []
 
@@ -139,7 +112,7 @@ export default defineEventHandler(async (event) => {
       ctx = await newPersistentContext(screenshotCfg)
     } catch {
       // Profile locked by concurrent request — fall back to ephemeral browser
-      fallbackBrowser = await chromium.launch({ headless: true, args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-setuid-sandbox'] })
+      fallbackBrowser = await launchBrowser()
       ctx = await createStealthContext(fallbackBrowser, screenshotCfg, 'en-US')
     }
 
@@ -265,11 +238,11 @@ export default defineEventHandler(async (event) => {
             const buf = await takeScreenshot(page, screenshotCfg)
             const b64 = buf.toString('base64')
             await mkdir(screenshotDir, { recursive: true })
-            const fname = `${new Date().toISOString().slice(0, 10).replace(/-/g, '')}_${categoryId}_AUC_searchpage.jpg`
+            const fname = `${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)}_${categoryId}_AUC_searchpage.jpg`
             await writeFile(join(screenshotDir, fname), buf)
             send({ type: 'searchpage', base64: b64 })
             send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No listing URLs found — bot protection may be active' })
-            ctrl.close()
+            close()
             await ctx.close().catch(() => {})
             return
           }
@@ -280,7 +253,7 @@ export default defineEventHandler(async (event) => {
         const msg = err instanceof Error ? err.message : String(err)
         emit('error', `Search page failed`, { msg })
         send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg })
-        ctrl.close()
+        close()
         await ctx.close().catch(() => {})
         return
       }
@@ -288,8 +261,7 @@ export default defineEventHandler(async (event) => {
       emit('info', `Processing ${listingUrls.length} listings`)
       await mkdir(screenshotDir, { recursive: true })
 
-      for (let i = 0; i < listingUrls.length; i++) {
-        const url = listingUrls[i]
+      await runConcurrently(listingUrls.map((url, i) => async () => {
         const filename = buildFilename(i, categoryId, url)
         const result: ItemResult = { index: i, url, filename: null, base64: null, screenshotOk: false, extractOk: false, items: [] }
         results.push(result)
@@ -302,20 +274,15 @@ export default defineEventHandler(async (event) => {
           const page = await ctx.newPage()
           try {
             await gotoWithBotRetry(page, url, emit, 3)
-            await dismissCookieBanner(page)
 
-            // Expand hidden description before screenshot
             await page.evaluate(() => {
               const content = document.querySelector<HTMLElement>('.js_detailed-content')
               if (content) { content.style.maxHeight = 'none'; content.style.overflow = 'visible' }
               const btnWrapper = document.querySelector<HTMLElement>('.detailed-button-wrapper')
               if (btnWrapper) btnWrapper.style.display = 'none'
             })
-            await page.waitForTimeout(300)
 
-            // Screenshot
-            await page.evaluate(() => window.scrollTo(0, 0))
-            await scrollForLazyContent(page)
+            await preparePageForScreenshot(page)
             const buffer = await takeScreenshot(page, screenshotCfg)
             base64 = buffer.toString('base64')
             await writeFile(join(screenshotDir, filename), buffer)
@@ -324,7 +291,6 @@ export default defineEventHandler(async (event) => {
             result.screenshotOk = true
             emit('info', `[${i + 1}] Screenshot saved`, { filename })
 
-            // Extract with Gemini
             emit('info', `[${i + 1}] Extracting with Gemini`)
             const { text, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight } = await callGemini(geminiModel, extractPrompt, base64)
             try {
@@ -354,7 +320,7 @@ export default defineEventHandler(async (event) => {
         }
 
         send((({ base64: _b, ...r }) => ({ type: 'result', ...r }))(result))
-      }
+      }), 2)
 
       await ctx.close().catch(() => {})
       await fallbackBrowser?.close().catch(() => {})
@@ -369,7 +335,7 @@ export default defineEventHandler(async (event) => {
       await ctx.close().catch(() => {})
       await fallbackBrowser?.close().catch(() => {})
     } finally {
-      ctrl.close()
+      close()
     }
   })()
 

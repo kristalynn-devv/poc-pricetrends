@@ -1,30 +1,17 @@
-import { chromium } from 'playwright'
+import type { ItemResult } from '../utils/routeHelpers'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog, saveItems } from '../utils/logger'
 import { appendResult } from '../utils/resultsStore'
-import { dismissCookieBanner, scrollForLazyContent , takeScreenshot, filterListingsByQuery} from '../utils/browserUtils'
+import { createStealthContext, dismissCookieBanner, takeScreenshot, filterListingsByQuery, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
-
-interface ItemResult {
-  index: number
-  url: string
-  filename: string | null
-  base64: string | null
-  screenshotOk: boolean
-  extractOk: boolean
-  items: unknown[]
-  raw?: string
-  error?: string
-}
 
 const CPA_BASE = 'https://compasia.co.th'
 
 function buildFilename(index: number, url: string): string {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const date = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)
   const slugMatch = url.replace(/[?#].*$/, '').replace(/\/$/, '').match(/\/([^/]+)$/)
   const slug = slugMatch ? slugMatch[1].slice(0, 30) : String(index + 1).padStart(2, '0')
   return `${date}_112_CPA_${slug}.jpg`
@@ -50,32 +37,13 @@ export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'no-cache')
   setResponseHeader(event, 'X-Accel-Buffering', 'no')
 
-  const encoder = new TextEncoder()
-  let ctrl!: ReadableStreamDefaultController
-  const stream = new ReadableStream({ start(c) { ctrl = c } })
-
-  const send = (data: object) => {
-    try { ctrl.enqueue(encoder.encode(JSON.stringify(data) + '\n')) } catch { }
-  }
-
-  const emit = (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => {
-    send({ type: 'log', ts: new Date().toISOString(), level, msg, ...(data !== undefined ? { data } : {}) })
-    const prefix = `[compasia][${level.toUpperCase()}]`
-    if (level === 'error') console.error(prefix, msg, data ?? '')
-    else if (level === 'warn') console.warn(prefix, msg, data ?? '')
-    else console.log(prefix, msg, data ?? '')
-  }
-
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const geminiModel = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
+  const { stream, send, emit, close } = createStreamEmitter('compasia')
+  const geminiModel = createGeminiModel(apiKey)
   const screenshotDir = join(process.cwd(), 'output', 'screenshots')
   const results: ItemResult[] = []
 
   ;(async () => {
-    const browser = await chromium.launch({
-      headless: true,
-      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-setuid-sandbox'],
-    })
+    const browser = await launchBrowser()
 
     try {
       emit('info', `Starting search`, { query, categoryId, limit })
@@ -126,7 +94,7 @@ export default defineEventHandler(async (event) => {
         const msg = err instanceof Error ? err.message : String(err)
         emit('error', `Search page failed`, { msg })
         send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg })
-        ctrl.close()
+        close()
         await browser.close()
         return
       }
@@ -135,7 +103,7 @@ export default defineEventHandler(async (event) => {
         emit('warn', 'No listing URLs found')
         await appendLog({ timestamp: new Date().toISOString(), source: 'compasia', url: searchUrl, categoryId, searchQuery: query, durationMs: 0, httpStatus: 404, screenshotFile: null, error: 'No listing URLs found', errorType: null }).catch(() => {})
         send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No listing URLs found' })
-        ctrl.close()
+        close()
         await browser.close()
         return
       }
@@ -143,8 +111,7 @@ export default defineEventHandler(async (event) => {
       emit('info', `Processing ${listingUrls.length} listings`)
       await mkdir(screenshotDir, { recursive: true })
 
-      for (let i = 0; i < listingUrls.length; i++) {
-        const url = listingUrls[i]
+      await runConcurrently(listingUrls.map((url, i) => async () => {
         const filename = buildFilename(i, url)
         const result: ItemResult = { index: i, url, filename: null, base64: null, screenshotOk: false, extractOk: false, items: [] }
         results.push(result)
@@ -154,21 +121,12 @@ export default defineEventHandler(async (event) => {
         let base64 = ''
 
         try {
-          const ctx = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-            locale: 'th-TH',
-            extraHTTPHeaders: { 'Accept-Language': 'th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7' },
-            viewport: screenshotCfg.viewport,
-          })
-          await ctx.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }) })
+          const ctx = await createStealthContext(browser, screenshotCfg, 'th-TH')
           const page = await ctx.newPage()
           try {
             await page.goto(url, { waitUntil: 'load', timeout: 30000 })
             await page.waitForTimeout(2500)
-            await dismissCookieBanner(page)
-            await page.mouse.move(0, 0)
-            await page.waitForTimeout(300)
-            await scrollForLazyContent(page)
+            await preparePageForScreenshot(page)
             const buffer = await takeScreenshot(page, screenshotCfg)
             base64 = buffer.toString('base64')
             await writeFile(join(screenshotDir, filename), buffer)
@@ -186,7 +144,7 @@ export default defineEventHandler(async (event) => {
           const isTimeout = msg.includes('timeout') || msg.includes('Timeout')
           await appendLog({ timestamp: new Date().toISOString(), source: 'compasia', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: isTimeout ? 504 : 500, screenshotFile: null, error: msg, errorType: isTimeout ? 'timeout' : 'screenshot' }).catch(() => {})
           send((({ base64: _b, ...r }) => ({ type: 'result', ...r }))(result))
-          continue
+          return
         }
 
         emit('info', `[${i + 1}] Extracting with Gemini`)
@@ -216,7 +174,7 @@ export default defineEventHandler(async (event) => {
         }
 
         send((({ base64: _b, ...r }) => ({ type: 'result', ...r }))(result))
-      }
+      }), 3)
 
       await browser.close()
 
@@ -229,7 +187,7 @@ export default defineEventHandler(async (event) => {
       send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg })
       await browser.close().catch(() => {})
     } finally {
-      ctrl.close()
+      close()
     }
   })()
 

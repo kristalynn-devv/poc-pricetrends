@@ -54,7 +54,7 @@ export function buildScreenshotOptions(cfg: ScreenshotConfig): {
   }
   return {
     viewport: { width: cfg.viewportWidth, height: cfg.viewportHeight },
-    screenshotOpts: { fullPage: cfg.fullPage, type: 'jpeg', quality: cfg.quality, clip },
+    screenshotOpts: { fullPage: true, type: 'jpeg', quality: cfg.quality, clip },
     cropHeight: cfg.cropHeight && cfg.cropHeight > 0 ? cfg.cropHeight : undefined,
   }
 }

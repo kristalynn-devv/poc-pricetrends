@@ -100,10 +100,17 @@ const API_CATEGORY_MAP: Record<string, string> = {
   '/api/siamwatchclub-search': '103',
   '/api/komehyo-search': '103',
   '/api/thaprachan-search': '106',
-  '/api/compasia-search': '112',
-  '/api/pantipmarket-search': '107',
+  '/api/wutdychonburi-search': '106',
+  '/api/prapantip-search': '106',
+  '/api/uauction-search': '106',
+  '/api/shopbkk-search': '107',
+  '/api/compasia-search': '107',
+  '/api/kaidee-search': '107',
+  '/api/sasom-search': '108',
+  '/api/moppet-search': '108',
   '/api/sfbrandname-search': '108',
   '/api/brandnamevoyage-search': '108',
+  '/api/truck2hand-search': '111',
 }
 
 function makeRun(): SourceRun {

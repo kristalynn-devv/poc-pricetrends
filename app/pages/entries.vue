@@ -38,7 +38,7 @@
         <v-spacer />
         <v-col cols="auto">
           <v-btn size="small" variant="tonal" prepend-icon="mdi-download" :disabled="flatItems.length === 0"
-            @click="downloadJson">JSON</v-btn>
+            @click="downloadJson(flatItems, `results_${selectedDate}.json`)">JSON</v-btn>
         </v-col>
       </v-row>
     </v-card>
@@ -145,6 +145,7 @@
 const store = useLogsEntriesStore()
 const route = useRoute()
 const router = useRouter()
+const { downloadJson } = useDownloadJson()
 
 const { CATEGORY_NAMES } = store
 const {
@@ -212,13 +213,6 @@ function viewLog(group: any) {
   router.push(`/logs?date=${dateParam}&file=${encodeURIComponent(group.screenshotFile)}`)
 }
 
-function downloadJson() {
-  const blob = new Blob([JSON.stringify(flatItems.value, null, 2)], { type: 'application/json' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `results_${selectedDate.value}.json`
-  a.click()
-}
 
 const initialRound = typeof route.query.round === 'string' ? route.query.round : null
 

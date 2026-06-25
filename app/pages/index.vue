@@ -169,7 +169,7 @@
               </v-col>
               <v-col cols="5">
                 <v-text-field :model-value="cfg.viewportHeight" @update:model-value="v => cfg.viewportHeight = v ? Number(v) : 1080" label="Height (px)" type="number"
-                  variant="outlined" density="compact" hide-details :disabled="cfg.fullPage" clearable />
+                  variant="outlined" density="compact" hide-details clearable />
               </v-col>
             </v-row>
             <v-row dense align="center" class="mb-2">
@@ -177,13 +177,7 @@
                 <v-text-field :model-value="cfg.quality" @update:model-value="v => cfg.quality = v ? Number(v) : 85" label="Quality (1–100)" type="number"
                   variant="outlined" density="compact" hide-details clearable />
               </v-col>
-              <v-col cols="6" class="d-flex justify-end">
-                <v-switch v-model="cfg.fullPage" label="เต็มจอ" density="compact" hide-details
-                  color="primary" />
-              </v-col>
-            </v-row>
-            <v-row dense class="mb-2">
-              <v-col cols="7">
+              <v-col cols="6">
                 <v-text-field :model-value="cfg.cropHeight" @update:model-value="v => cfg.cropHeight = v ? Number(v) : undefined" label="Crop height (px)" type="number"
                   variant="outlined" density="compact" hide-details clearable placeholder="ไม่ตัด" />
               </v-col>
@@ -221,7 +215,7 @@
             · extract {{ detailRun.summary.extractOk }}/{{ detailRun.summary.total }}
           </span>
           <v-btn v-if="detailExtracted.length > 0" size="small" variant="tonal" prepend-icon="mdi-download" class="mr-2"
-            @click="downloadJson(detailExtracted.map(({ _screenshot: _s, ...r }) => r))">JSON</v-btn>
+            @click="downloadJson(detailExtracted.map(({ _screenshot: _s, ...r }) => r), `extracted_${Date.now()}.json`)">JSON</v-btn>
         </v-toolbar>
 
         <v-container fluid class="pa-4"
@@ -306,6 +300,8 @@ const detailExtracted = computed(() => {
 })
 
 const { getAllowedKeys, getFieldOrder } = useCategoryFields()
+const { downloadJson } = useDownloadJson()
+const { formatLogTime, logColor, logLevelColor } = useLogStyle()
 
 const detailHeaders = computed(() => {
   if (detailExtracted.value.length === 0) return []
@@ -340,25 +336,6 @@ watch([detailOpen, () => detailRun.value?.logs.length], async () => {
   detailTermEl.value.scrollTop = detailTermEl.value.scrollHeight
 })
 
-function downloadJson(data: unknown) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `extracted_${Date.now()}.json`
-  a.click()
-}
-
-function formatLogTime(ts: string) {
-  try { return new Date(ts).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) } catch { return ts }
-}
-
-function logColor(level: string) {
-  return level === 'error' ? '#f48771' : level === 'warn' ? '#dcdcaa' : '#d4d4d4'
-}
-
-function logLevelColor(level: string) {
-  return level === 'error' ? '#f44747' : level === 'warn' ? '#ce9178' : '#4ec9b0'
-}
 </script>
 
 <style scoped>

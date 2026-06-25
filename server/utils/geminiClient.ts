@@ -1,5 +1,9 @@
-import type { GenerativeModel } from '@google/generative-ai'
+import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai'
 import sharp from 'sharp'
+
+export function createGeminiModel(apiKey: string): GenerativeModel {
+  return new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
+}
 
 export interface GeminiResult {
   text: string
