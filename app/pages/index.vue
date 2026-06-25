@@ -3,14 +3,15 @@
     <v-row class="mb-6">
       <v-col>
         <h1 class="text-h4 font-weight-bold">Price Extractor</h1>
-        <p class="text-body-2 text-medium-emphasis mt-1">ค้นหาราคาสินค้าแยกตามหมวด</p>
+        <div class="d-flex align-center ga-2 mt-1">
+          <p class="text-body-2 text-medium-emphasis mb-0">ค้นหาราคาสินค้าแยกตามหมวด</p>
+        </div>
       </v-col>
       <v-col cols="auto" class="d-flex align-center ga-1">
         <v-btn variant="text" prepend-icon="mdi-table-eye" to="/entries" size="small"
           class="text-none">รายการข้อมูล</v-btn>
         <v-btn variant="text" prepend-icon="mdi-text-box-outline" to="/logs" size="small" class="text-none">System
           Logs</v-btn>
-        <v-btn icon="mdi-tune" size="small" variant="text" @click="configOpen = true" />
       </v-col>
     </v-row>
 
@@ -25,11 +26,12 @@
           <div class="d-flex align-center ga-1 me-2" @click.stop>
             <span class="text-caption text-medium-emphasis">{{grp.sources.filter(s => s.apiRoute).length}}/{{
               grp.sources.length }} แหล่งพร้อมใช้</span>
-            <template v-if="Object.values(grp.runs).some(r => r.done)">
-              <v-chip size="x-small" color="primary" variant="tonal">
-                {{Object.values(grp.runs).reduce((n, r) => n + r.results.flatMap(res => res.items).length, 0)}} รายการ
+            <template v-if="groupsStore.grpTotalItems(grp) > 0 || grp.running">
+              <v-chip size="x-small" :color="grp.running ? 'primary' : 'success'" variant="tonal">
+                <v-progress-circular v-if="grp.running" indeterminate size="8" width="2" class="mr-1" />
+                {{ groupsStore.grpTotalItems(grp) }} รายการ
               </v-chip>
-              <v-btn v-if="grp.lastRoundId" size="x-small" variant="tonal" color="success"
+              <v-btn v-if="grp.lastRoundId && !grp.running" size="x-small" variant="tonal" color="success"
                 prepend-icon="mdi-open-in-new"
                 :to="`/entries?round=${grp.lastRoundId}&date=${new Date().toISOString().slice(0, 10)}`" @click.stop>
                 ดูผลลัพธ์
@@ -41,40 +43,17 @@
         <v-expansion-panel-text class="pa-0">
           <!-- Query list + limit -->
           <v-card-text class="pb-2">
-            <!-- Required fields row -->
+            <!-- Search freetext row -->
             <div class="d-flex align-center ga-2 mb-2">
-              <v-text-field v-for="field in grp.requiredFields" :key="field.key" v-model="grp.fieldValues[field.key]"
-                :label="field.label" variant="outlined" density="compact" hide-details :disabled="grp.running"
+              <v-text-field v-model="grp.newQuery"
+                :placeholder="[...grp.requiredFields, ...grp.optionalFields].map(f => f.label).join('  ')"
+                variant="outlined" density="compact" hide-details :disabled="grp.running"
                 style="flex:1; min-width:0" @keyup.enter="groupsStore.addQuery(grp)" clearable />
               <v-btn color="secondary" variant="tonal" size="small" class="text-none" height="40"
-                :disabled="grp.requiredFields.every(f => !grp.fieldValues[f.key]?.trim()) || grp.running"
+                :disabled="!grp.newQuery?.trim() || grp.running"
                 prepend-icon="mdi-plus" @click.stop="groupsStore.addQuery(grp)">
                 เพิ่มรายการ
               </v-btn>
-            </div>
-
-            <!-- Active optional fields -->
-            <v-row v-if="grp.activeOptionals.length > 0" dense align="center" class="mb-1">
-              <v-col v-for="key in grp.activeOptionals" :key="key" cols="6" md="3">
-                <v-text-field v-model="grp.fieldValues[key]"
-                  :label="grp.optionalFields.find(f => f.key === key)?.label ?? key" variant="outlined"
-                  density="compact" hide-details :disabled="grp.running" @keyup.enter="groupsStore.addQuery(grp)" clearable>
-                  <template #append-inner>
-                    <v-icon size="x-small" class="cursor-pointer"
-                      @click.stop="groupsStore.removeOptionalField(grp, key)">mdi-close</v-icon>
-                  </template>
-                </v-text-field>
-              </v-col>
-            </v-row>
-
-            <!-- Optional field chips (suggestions) -->
-            <div v-if="grp.optionalFields.some(f => !grp.activeOptionals.includes(f.key))"
-              class="d-flex flex-wrap ga-1 mb-2" @click.stop> <v-chip
-                v-for="field in grp.optionalFields.filter(f => !grp.activeOptionals.includes(f.key))" :key="field.key"
-                size="small" variant="outlined" color="primary" :disabled="grp.running" prepend-icon="mdi-plus"
-                @click.stop="groupsStore.addOptionalField(grp, field.key)">
-                {{ field.label }}
-              </v-chip>
             </div>
 
             <!-- Run button row -->
@@ -92,7 +71,7 @@
               <v-col cols="auto" class="d-flex align-center ga-2">
                 <v-btn color="primary" :loading="grp.running" height="40"
                   :disabled="grp.queries.length === 0 || !grp.sources.some(s => s.apiRoute && grp.enabled[s.name])"
-                  prepend-icon="mdi-play" @click="groupsStore.runGroup(grp, cfg)">
+                  prepend-icon="mdi-play" @click="groupsStore.runGroup(grp, cfgStore.getSourceCfg)">
                   ค้นหา
                 </v-btn>
               </v-col>
@@ -123,8 +102,6 @@
 
                 <v-list-item-title class="text-body-2 font-weight-regular d-flex align-center ga-1">
                   <span>{{ src.name }}</span>
-                  <v-chip v-if="src.apiRoute" size="x-small" color="success" variant="tonal">Ready</v-chip>
-                  <v-chip v-else size="x-small" color="grey" variant="tonal">Not Ready</v-chip>
                   <v-progress-circular v-if="grp.runs[src.name]?.loading" indeterminate size="14" width="2" />
                   <v-chip v-else-if="groupsStore.srcExtracted(grp, src.name).length > 0" size="x-small" color="primary"
                     variant="tonal">
@@ -136,10 +113,14 @@
                 <v-list-item-subtitle class="text-caption">{{ src.url }}</v-list-item-subtitle>
 
                 <template #append>
-                  <v-btn v-if="grp.runs[src.name]" size="small" variant="tonal" prepend-icon="mdi-console"
-                    @click.stop="openDetail(grp, src.name)">
-                    ดูรายละเอียด
-                  </v-btn>
+                  <div class="d-flex align-center ga-1">
+                    <v-btn v-if="src.apiRoute" size="small" variant="text" :color="cfgStore.hasCustomCfg(src.name) ? 'primary' : undefined"
+                      icon="mdi-tune" @click.stop="openSrcCfg(src.name)" />
+                    <v-btn v-if="grp.runs[src.name]" size="small" variant="tonal" prepend-icon="mdi-console"
+                      @click.stop="openDetail(grp, src.name)">
+                      ดูรายละเอียด
+                    </v-btn>
+                  </div>
                 </template>
               </v-list-item>
             </template>
@@ -148,53 +129,52 @@
       </v-expansion-panel>
     </v-expansion-panels>
 
-    <!-- ── Config Dialog ── -->
-    <v-dialog v-model="configOpen" max-width="400">
-      <v-card>
+    <!-- ── Per-source Config Dialog ── -->
+    <v-dialog v-model="srcCfgOpen" max-width="400">
+      <v-card v-if="srcCfgTarget">
         <v-card-title class="d-flex align-center ga-1 pt-4 px-4">
           <v-icon size="small">mdi-tune</v-icon>
-          <span class="">การตั้งค่า</span>
+          <span class="text-body-1">{{ srcCfgTarget }}</span>
           <v-spacer />
-          <v-btn icon="mdi-close" size="small" variant="text" @click="configOpen = false" />
+          <v-btn icon="mdi-close" size="small" variant="text" @click="srcCfgOpen = false" />
         </v-card-title>
         <v-card-text class="px-4 pb-2">
-          <v-form @submit.prevent="configOpen = false">
-            <v-row dense class="mb-2">
-              <v-col cols="5">
-                <v-text-field :model-value="cfg.viewportWidth" @update:model-value="v => cfg.viewportWidth = v ? Number(v) : 1920" label="Width (px)" type="number"
-                  variant="outlined" density="compact" hide-details clearable />
-              </v-col>
-              <v-col cols="2" class="d-flex align-center justify-center">
-                <span class="text-body-2 text-medium-emphasis">×</span>
-              </v-col>
-              <v-col cols="5">
-                <v-text-field :model-value="cfg.viewportHeight" @update:model-value="v => cfg.viewportHeight = v ? Number(v) : 1080" label="Height (px)" type="number"
-                  variant="outlined" density="compact" hide-details clearable />
-              </v-col>
-            </v-row>
-            <v-row dense align="center" class="mb-2">
-              <v-col cols="6">
-                <v-text-field :model-value="cfg.quality" @update:model-value="v => cfg.quality = v ? Number(v) : 85" label="Quality (1–100)" type="number"
-                  variant="outlined" density="compact" hide-details clearable />
-              </v-col>
-              <v-col cols="6">
-                <v-text-field :model-value="cfg.cropHeight" @update:model-value="v => cfg.cropHeight = v ? Number(v) : undefined" label="Crop height (px)" type="number"
-                  variant="outlined" density="compact" hide-details clearable placeholder="ไม่ตัด" />
-              </v-col>
-            </v-row>
-            <v-divider class="mb-3" />
-            <v-row dense>
-              <v-col cols="6">
-                <v-combobox v-model="cfg.limit" :items="[1, 3, 5, 10]" label="จำนวนชิ้น/แหล่ง/คำค้น"
-                  variant="outlined" density="compact" hide-details :return-object="false" type="number" />
-              </v-col>
-            </v-row>
-          </v-form>
+          <v-row dense class="mb-2">
+            <v-col cols="5">
+              <v-text-field v-model.number="srcCfgEdit.viewportWidth" label="Width (px)" type="number"
+                variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col cols="2" class="d-flex align-center justify-center">
+              <span class="text-body-2 text-medium-emphasis">×</span>
+            </v-col>
+            <v-col cols="5">
+              <v-text-field v-model.number="srcCfgEdit.viewportHeight" label="Height (px)" type="number"
+                variant="outlined" density="compact" hide-details />
+            </v-col>
+          </v-row>
+          <v-row dense align="center" class="mb-2">
+            <v-col cols="6">
+              <v-text-field v-model.number="srcCfgEdit.quality" label="Quality (1–100)" type="number"
+                variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model.number="srcCfgEdit.cropHeight" label="Crop height (px)" type="number"
+                variant="outlined" density="compact" hide-details clearable placeholder="ไม่ตัด" />
+            </v-col>
+          </v-row>
+          <v-divider class="mb-3" />
+          <v-row dense>
+            <v-col cols="6">
+              <v-combobox v-model="srcCfgEdit.limit" :items="[1, 3, 5, 10]" label="จำนวนชิ้น/คำค้น"
+                variant="outlined" density="compact" hide-details :return-object="false" type="number" />
+            </v-col>
+          </v-row>
         </v-card-text>
         <v-card-actions class="px-4 pb-4">
-          <v-btn variant="text" size="small" class="text-none" @click="cfgStore.reset()">Reset</v-btn>
+          <v-btn variant="text" size="small" class="text-none"
+            @click="cfgStore.resetSourceCfg(srcCfgTarget); srcCfgOpen = false">Reset</v-btn>
           <v-spacer />
-          <v-btn color="primary" size="small" class="text-none" @click="configOpen = false">ตกลง</v-btn>
+          <v-btn color="primary" size="small" class="text-none" @click="saveSrcCfg">ตกลง</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -267,73 +247,95 @@
 </template>
 
 <script setup lang="ts">
+import { SOURCE_CFG_DEFAULTS, type SourceCfg } from '~/stores/globalConfig';
 
-const cfgStore = useGlobalConfigStore()
-const groupsStore = useSearchGroupsStore()
+const cfgStore = useSourceConfigStore();
+const groupsStore = useSearchGroupsStore();
 
-const { cfg } = storeToRefs(cfgStore)
-const { groups } = storeToRefs(groupsStore)
+const { groups } = storeToRefs(groupsStore);
 
-groupsStore.init()
+groupsStore.init();
 
 // ── Local UI state ─────────────────────────────────────────────────────────────
-const configOpen = ref(false)
-const openPanels = ref<number[]>([0, 1, 2, 3, 4])
+const openPanels = ref<number[]>([0, 1, 2, 3, 4]);
+
+// ── Per-source config dialog ───────────────────────────────────────────────────
+const srcCfgOpen = ref(false);
+const srcCfgTarget = ref('');
+const srcCfgEdit = reactive<SourceCfg>({ ...SOURCE_CFG_DEFAULTS, clip: { ...SOURCE_CFG_DEFAULTS.clip } });
+
+function openSrcCfg(name: string) {
+  srcCfgTarget.value = name;
+  const existing = cfgStore.getSourceCfg(name);
+  Object.assign(srcCfgEdit, existing);
+  Object.assign(srcCfgEdit.clip, existing.clip);
+  srcCfgOpen.value = true;
+}
+
+function saveSrcCfg() {
+  cfgStore.setSourceCfg(srcCfgTarget.value, { ...srcCfgEdit, clip: { ...srcCfgEdit.clip } });
+  srcCfgOpen.value = false;
+}
 
 // ── Source detail dialog ───────────────────────────────────────────────────────
-const detailOpen = ref(false)
-const detailGrpLabel = ref('')
-const detailSrcName = ref('')
-const detailTermEl = ref<HTMLElement>()
+const detailOpen = ref(false);
+const detailGrpLabel = ref('');
+const detailSrcName = ref('');
+const detailTermEl = ref<HTMLElement>();
 
 const detailRun = computed(() => {
-  if (!detailGrpLabel.value || !detailSrcName.value) return null
-  const grp = groups.value.find(g => g.label === detailGrpLabel.value)
-  return grp?.runs[detailSrcName.value] ?? null
-})
+  if (!detailGrpLabel.value || !detailSrcName.value) return null;
+  const grp = groups.value.find(g => g.label === detailGrpLabel.value);
+  return grp?.runs[detailSrcName.value] ?? null;
+});
 
 const detailExtracted = computed(() => {
-  if (!detailRun.value) return []
-  const grp = groups.value.find(g => g.label === detailGrpLabel.value)
-  if (!grp) return []
-  return groupsStore.srcExtracted(grp, detailSrcName.value)
-})
+  if (!detailRun.value) return [];
+  const grp = groups.value.find(g => g.label === detailGrpLabel.value);
+  if (!grp) return [];
+  return groupsStore.srcExtracted(grp, detailSrcName.value);
+});
 
-const { getAllowedKeys, getFieldOrder } = useCategoryFields()
-const { downloadJson } = useDownloadJson()
-const { formatLogTime, logColor, logLevelColor } = useLogStyle()
+const totalFound = computed(() =>
+  groups.value.reduce((sum, grp) => sum + groupsStore.grpTotalItems(grp), 0)
+)
+const anyRunning = computed(() => groups.value.some(g => g.running))
+
+const { getAllowedKeys, getFieldOrder } = useCategoryFields();
+const { downloadJson } = useDownloadJson();
+const { formatLogTime, logColor, logLevelColor } = useLogStyle();
 
 const detailHeaders = computed(() => {
-  if (detailExtracted.value.length === 0) return []
-  const grp = groups.value.find(g => g.label === detailGrpLabel.value)
-  const categoryId = grp?.ids?.[0] as string | undefined
-  const allowed = categoryId ? getAllowedKeys(categoryId) : null
-  const order = categoryId ? getFieldOrder(categoryId) : []
-  const allKeys = Object.keys(detailExtracted.value[0]).filter(k => k !== '_screenshot' && k !== '_source')
-  const filteredKeys = allowed ? allKeys.filter(k => allowed.has(k)) : allKeys
+  if (detailExtracted.value.length === 0) return [];
+  const grp = groups.value.find(g => g.label === detailGrpLabel.value);
+  const categoryId = grp?.ids?.[0] as string | undefined;
+  const allowed = categoryId ? getAllowedKeys(categoryId) : null;
+  const order = categoryId ? getFieldOrder(categoryId) : [];
+  const allKeys = Object.keys(detailExtracted.value[0]).filter(k => k !== '_screenshot' && k !== '_source');
+  const filteredKeys = allowed ? allKeys.filter(k => allowed.has(k)) : allKeys;
   const dataKeys = order.length
     ? [...filteredKeys].sort((a, b) => {
-      const ai = order.indexOf(a); const bi = order.indexOf(b)
-      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+      const ai = order.indexOf(a); const bi = order.indexOf(b);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
     })
-    : filteredKeys
+    : filteredKeys;
   return [
     { title: 'รูป', key: '_screenshot', sortable: false, width: 116 },
     ...dataKeys.map(k => ({ title: k, key: k, sortable: true })),
     { title: 'ไฟล์', key: '_source', sortable: false },
-  ]
-})
+  ];
+});
 
 function openDetail(grp: any, srcName: string) {
-  detailGrpLabel.value = grp.label
-  detailSrcName.value = srcName
-  detailOpen.value = true
+  detailGrpLabel.value = grp.label;
+  detailSrcName.value = srcName;
+  detailOpen.value = true;
 }
 
 watch([detailOpen, () => detailRun.value?.logs.length], async () => {
-  if (!detailOpen.value || !detailTermEl.value) return
-  await nextTick()
-  detailTermEl.value.scrollTop = detailTermEl.value.scrollHeight
+  if (!detailOpen.value || !detailTermEl.value) return;
+  await nextTick();
+  detailTermEl.value.scrollTop = detailTermEl.value.scrollHeight;
 })
 
 </script>

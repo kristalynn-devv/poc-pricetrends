@@ -31,6 +31,7 @@ export const DISMISS_SELECTORS = [
   'button:has-text("Continue")',
   'button:has-text("Close")',
   // Thai variants
+  'button:has-text("อนุญาต")',
   'button:has-text("ยอมรับ")',
   'button:has-text("ยอมรับทั้งหมด")',
   'button:has-text("ตกลง")',
@@ -72,6 +73,27 @@ export async function dismissCookieBanner(page: Page): Promise<void> {
   }
 }
 
+export async function applyStealthScripts(ctx: BrowserContext): Promise<void> {
+  await ctx.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined })
+    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] })
+    Object.defineProperty(navigator, 'languages', { get: () => ['th-TH', 'th', 'en-US', 'en'] })
+    Object.defineProperty(navigator, 'platform', { get: () => 'Win32' })
+    Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 })
+    Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 })
+    // @ts-ignore
+    window.chrome = { runtime: {} }
+    const origQuery = window.navigator.permissions?.query.bind(window.navigator.permissions)
+    if (origQuery) {
+      // @ts-ignore
+      window.navigator.permissions.query = (p: any) =>
+        p.name === 'notifications'
+          ? Promise.resolve({ state: Notification.permission })
+          : origQuery(p)
+    }
+  })
+}
+
 export async function createStealthContext(
   browser: Browser,
   cfg: ReturnType<typeof buildScreenshotOptions>,
@@ -84,9 +106,7 @@ export async function createStealthContext(
     extraHTTPHeaders: { 'Accept-Language': acceptLanguage },
     viewport: cfg.viewport,
   })
-  await ctx.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined })
-  })
+  await applyStealthScripts(ctx)
   return ctx
 }
 

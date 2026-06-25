@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { appendLog, saveItems } from '../utils/logger'
 import { mergeScreenshotConfig, type ScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
 import { appendResult } from '../utils/resultsStore'
-import { dismissCookieBanner, createStealthContext, takeScreenshot, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
+import { dismissCookieBanner, createStealthContext, applyStealthScripts, takeScreenshot, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
 
@@ -76,7 +76,7 @@ async function newPersistentContext(cfg: ReturnType<typeof buildScreenshotOption
     extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
     viewport: cfg.viewport,
   })
-  await ctx.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }) })
+  await applyStealthScripts(ctx)
   return ctx
 }
 

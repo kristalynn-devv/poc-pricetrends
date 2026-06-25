@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
 
     try {
       emit('info', `Starting search`, { query, categoryId, limit })
-      const searchUrl = `${SASOM_BASE}/th/search?q=${encodeURIComponent(query)}`
+      const searchUrl = `${SASOM_BASE}/th/shop?query=${encodeURIComponent(query)}&sortby=products_aggregate_trending&type=ask`
 
       let listingUrls: string[] = []
       try {
@@ -67,7 +67,7 @@ export default defineEventHandler(async (event) => {
 
           // Collect product links — sasom /th/<category>/<slug> pattern
           const allHrefPairs = await page.locator('a[href]').evaluateAll((els) => (els as HTMLAnchorElement[]).map((a) => ({ url: a.href, title: a.textContent?.trim() ?? '' })))
-          const productUrlRe = /sasom\.co\.th\/th\/[^/]+\/[^/]+-[^/?#]+\//i
+          const productUrlRe = /sasom\.co\.th\/(?:th\/)?[^/?#]+\/\d[^/?#]*\/[^/?#]+-[^/?#]+/i
           const allProductPairs = [...new Map(allHrefPairs.filter((p) => productUrlRe.test(p.url)).map((p) => [p.url, p])).values()]
           emit('info', `Raw product URLs on page`, { count: allProductPairs.length })
 

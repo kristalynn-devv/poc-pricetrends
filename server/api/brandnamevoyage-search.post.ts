@@ -4,7 +4,7 @@ import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog, saveItems } from '../utils/logger'
 import { appendResult } from '../utils/resultsStore'
-import { createStealthContext, dismissCookieBanner, takeScreenshot, filterListingsByQuery, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
+import { createStealthContext, dismissCookieBanner, takeScreenshot, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
 
@@ -69,20 +69,9 @@ export default defineEventHandler(async (event) => {
 
           const allHrefPairs = await page.locator('a[href]').evaluateAll((els) => (els as HTMLAnchorElement[]).map((a) => ({ url: a.href, title: a.textContent?.trim() ?? '' })))
           const productPairs = [...new Map(allHrefPairs.filter((p) => PRODUCT_URL_RE.test(p.url)).map((p) => [p.url, p])).values()]
-          const filtered = filterListingsByQuery(productPairs, query)
-          emit('info', `Keyword filter: kept ${filtered.length}/${productPairs.length}`)
-          listingUrls = filtered.map((p) => p.url).slice(0, limit)
+          // WooCommerce search already filters by query — skip keyword re-filter to avoid dropping valid results
+          listingUrls = productPairs.map((p) => p.url).slice(0, limit)
           emit('info', `Found ${listingUrls.length} product URLs from search`)
-
-          if (listingUrls.length === 0) {
-            const pageText = await page.content()
-            const matches = [...pageText.matchAll(/href="(\/product\/[^"/?#]+\/?)/g)].map((m) => `${BNV_BASE}${m[1]}`)
-            const uniqueMatches = [...new Set(matches)].map((url) => ({ url, title: '' }))
-            const filteredFallback = filterListingsByQuery(uniqueMatches, query)
-            emit('info', `Keyword filter (HTML scan): kept ${filteredFallback.length}/${uniqueMatches.length}`)
-            listingUrls = filteredFallback.map((p) => p.url).slice(0, limit)
-            emit(listingUrls.length > 0 ? 'info' : 'warn', `HTML scan: ${listingUrls.length} product URLs`)
-          }
         } finally {
           await ctx.close()
         }

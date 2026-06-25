@@ -1,39 +1,54 @@
 import { defineStore } from 'pinia'
 
-const STORAGE_KEY = 'screenshotCfg_v1'
+const STORAGE_KEY = 'sourceConfigs_v1'
 
-const DEFAULTS = {
+export interface SourceCfg {
+  viewportWidth: number
+  viewportHeight: number
+  quality: number
+  cropHeight?: number
+  clip: { enabled: boolean; x: number; y: number; width: number; height: number }
+  limit: number
+}
+
+export const SOURCE_CFG_DEFAULTS: SourceCfg = {
   viewportWidth: 1920,
   viewportHeight: 1080,
-  fullPage: true,
   quality: 85,
-  cropHeight: undefined as number | undefined,
+  cropHeight: undefined,
   clip: { enabled: false, x: 0, y: 0, width: 1920, height: 1080 },
   limit: 1,
 }
 
-export const useGlobalConfigStore = defineStore('globalConfig', () => {
-  function loadFromStorage() {
+export const useSourceConfigStore = defineStore('sourceConfig', () => {
+  function loadFromStorage(): Record<string, SourceCfg> {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        const cropHeight = parsed.cropHeight != null ? Number(parsed.cropHeight) : undefined
-        return { ...DEFAULTS, ...parsed, cropHeight: cropHeight && cropHeight > 0 ? cropHeight : undefined, clip: { ...DEFAULTS.clip, ...(parsed.clip ?? {}) } }
-      }
+      if (raw) return JSON.parse(raw)
     } catch {}
-    return { ...DEFAULTS, clip: { ...DEFAULTS.clip } }
+    return {}
   }
 
-  const cfg = reactive(loadFromStorage())
+  const configs = reactive<Record<string, SourceCfg>>(loadFromStorage())
 
-  watch(cfg, (val) => localStorage.setItem(STORAGE_KEY, JSON.stringify(val)), { deep: true })
+  watch(configs, (val) => localStorage.setItem(STORAGE_KEY, JSON.stringify(val)), { deep: true })
 
-  function reset() {
-    Object.assign(cfg, { ...DEFAULTS })
-    Object.assign(cfg.clip, DEFAULTS.clip)
-    localStorage.removeItem(STORAGE_KEY)
+  function getSourceCfg(name: string): SourceCfg {
+    return configs[name] ?? { ...SOURCE_CFG_DEFAULTS, clip: { ...SOURCE_CFG_DEFAULTS.clip } }
   }
 
-  return { cfg, reset }
+  function setSourceCfg(name: string, val: SourceCfg) {
+    configs[name] = { ...val, clip: { ...val.clip } }
+  }
+
+  function resetSourceCfg(name: string) {
+    delete configs[name]
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(configs))
+  }
+
+  function hasCustomCfg(name: string): boolean {
+    return name in configs
+  }
+
+  return { configs, getSourceCfg, setSourceCfg, resetSourceCfg, hasCustomCfg }
 })

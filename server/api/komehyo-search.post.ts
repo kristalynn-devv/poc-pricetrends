@@ -4,28 +4,14 @@ import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog, saveItems } from '../utils/logger'
 import { appendResult } from '../utils/resultsStore'
-import { createStealthContext, dismissCookieBanner, takeScreenshot, filterListingsByQuery, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
+import { createStealthContext, dismissCookieBanner, takeScreenshot, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
 
 const KMH_BASE = 'https://www.komehyo.co.th'
 const KMH_LIST = `${KMH_BASE}/th/product-list/`
 
-// product_type filter per category (omit = search all types)
-const CATEGORY_PRODUCT_TYPE: Record<string, string> = {
-  '103': '2725', // นาฬิกา
-}
 
-// Search box selectors in order of preference
-const SEARCH_INPUT_SELECTORS = [
-  'input[placeholder*="ค้นหา"]',
-  'input[name="keyword"]',
-  'input[name="q"]',
-  'input[name="search"]',
-  'input[type="search"]',
-  '.search-box input',
-  'header input',
-]
 
 function buildFilename(index: number, url: string): string {
   const date = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)
@@ -64,77 +50,44 @@ export default defineEventHandler(async (event) => {
 
     try {
       emit('info', `Starting search`, { query, categoryId, limit })
-      const productType = CATEGORY_PRODUCT_TYPE[categoryId]
-      const startUrl = productType ? `${KMH_LIST}?product_type=${productType}` : KMH_LIST
-      let searchUrl = startUrl
+      let searchUrl = KMH_LIST
 
       let listingUrls: string[] = []
       try {
-        const ctx = await browser.newContext({
-          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-          locale: 'th-TH',
-          extraHTTPHeaders: { 'Accept-Language': 'th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7' },
-          viewport: screenshotCfg.viewport,
-        })
-        await ctx.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }) })
+        const ctx = await createStealthContext(browser, screenshotCfg, 'th-TH')
         const page = await ctx.newPage()
         try {
-          emit('info', `Loading product-list page`, { startUrl })
-          await page.goto(startUrl, { waitUntil: 'load', timeout: 30000 })
+          // Warmup homepage first so session cookies are set before hitting search
+          emit('info', `Warming up homepage`)
+          await page.goto(KMH_BASE, { waitUntil: 'load', timeout: 30000 })
           await page.waitForTimeout(2000)
           await dismissCookieBanner(page)
 
-          // Find and use the search box
-          let searched = false
-          for (const sel of SEARCH_INPUT_SELECTORS) {
-            try {
-              const input = page.locator(sel).first()
-              if (await input.isVisible({ timeout: 1000 })) {
-                await input.click()
-                await input.fill(query)
-                await page.waitForTimeout(300)
-                await page.keyboard.press('Enter')
-                await page.waitForLoadState('load', { timeout: 20000 })
-                await page.waitForTimeout(2000)
-                searchUrl = page.url()
-                emit('info', `Searched via input`, { sel, resultUrl: searchUrl })
-                searched = true
-                break
-              }
-            } catch { }
-          }
-
-          if (!searched) {
-            // Fallback: try URL with keyword param directly
-            searchUrl = `${KMH_LIST}?keyword=${encodeURIComponent(query)}`
-            emit('warn', `Search box not found, trying URL param`, { url: searchUrl })
-            await page.goto(searchUrl, { waitUntil: 'load', timeout: 30000 })
-            await page.waitForTimeout(2000)
-          }
-
+          // Use search box to submit query (direct URL param doesn't work without session)
+          const searchInput = page.locator('input[name="search"], input[type="search"], input[placeholder*="ค้นหา"]').first()
+          await searchInput.waitFor({ state: 'visible', timeout: 8000 })
+          await searchInput.click()
+          await page.waitForTimeout(300)
+          await searchInput.fill(query)
+          await page.waitForTimeout(300)
+          await page.keyboard.press('Enter')
+          await page.waitForLoadState('load', { timeout: 20000 })
+          await page.waitForTimeout(2000)
+          searchUrl = page.url()
+          emit('info', `Search submitted`, { resultUrl: searchUrl })
           await dismissCookieBanner(page)
-          await page.waitForTimeout(500)
 
-          // Collect product links — require numeric product ID in path
+          // Collect product links — komehyo product URLs are numeric IDs (/th/product/12345), no slug
           const productUrlRe = /\/th\/product\/\d+/
-          const queryTerms = query.toLowerCase().split(/\s+/).filter(Boolean)
           const allPairs = await page.locator('a[href]').evaluateAll((els) => (els as HTMLAnchorElement[]).map((a) => ({ url: a.href, title: a.textContent?.trim() ?? '' })))
           const allProductPairs = [...new Map(allPairs.filter((p) =>
             p.url.includes('komehyo.co.th') && productUrlRe.test(p.url)
           ).map((p) => [p.url, p])).values()]
           emit('info', `Raw product URLs on page`, { count: allProductPairs.length })
 
-          // Filter by query terms appearing in the URL slug (existing behaviour) + title via filterListingsByQuery
-          const slugMatched = allProductPairs.filter((p) => {
-            const slug = p.url.toLowerCase()
-            return queryTerms.every((t) => slug.includes(t))
-          })
-          const filtered = filterListingsByQuery(allProductPairs, query)
-          // Use slug filter if it yields results, otherwise fall back to title+url filter
-          const finalMatched = slugMatched.length > 0 ? slugMatched : filtered
-          emit('info', `Keyword filter: kept ${finalMatched.length}/${allProductPairs.length}`)
-          listingUrls = finalMatched.slice(0, limit).map((p) => p.url)
-          emit(listingUrls.length > 0 ? 'info' : 'warn', `Filtered to ${listingUrls.length} URLs (total=${allProductPairs.length})`)
+          // Site search already filters by query — take all product URLs up to limit
+          listingUrls = allProductPairs.slice(0, limit).map((p) => p.url)
+          emit(listingUrls.length > 0 ? 'info' : 'warn', `Found ${listingUrls.length} product URLs`)
         } finally {
           await ctx.close()
         }

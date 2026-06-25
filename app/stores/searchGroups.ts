@@ -128,11 +128,9 @@ function buildGroup(label: string, ids: string[], sources: SourceDef[]): Categor
   const enabled: Record<string, boolean> = {}
   sources.forEach((s) => { enabled[s.name] = false })
   const { required, optional } = getFields(ids)
-  const fieldValues: Record<string, string> = {}
-  required.forEach((f) => { fieldValues[f.key] = '' })
   return {
     label, ids, sources, queries: [], newQuery: '', running: false, enabled, runs: {},
-    requiredFields: required, optionalFields: optional, fieldValues, activeOptionals: [],
+    requiredFields: required, optionalFields: optional, fieldValues: {}, activeOptionals: [],
   }
 }
 
@@ -201,15 +199,14 @@ export const useSearchGroupsStore = defineStore('searchGroups', () => {
   }
 
   function addQuery(grp: CategoryGroup) {
-    const allFields = [
-      ...grp.requiredFields,
-      ...grp.optionalFields.filter(f => grp.activeOptionals.includes(f.key)),
-    ]
-    const parts = allFields.map(f => grp.fieldValues[f.key]?.trim()).filter(Boolean)
-    if (parts.length === 0) return
-    const q = parts.join(' ')
+    const q = grp.newQuery.trim()
+    if (!q) return
     if (!grp.queries.includes(q)) grp.queries.push(q)
-    allFields.forEach(f => { grp.fieldValues[f.key] = '' })
+    grp.newQuery = ''
+  }
+
+  function grpTotalItems(grp: CategoryGroup) {
+    return Object.values(grp.runs).reduce((n, r) => n + r.results.reduce((m, res) => m + res.items.length, 0), 0)
   }
 
   function srcExtracted(grp: CategoryGroup, srcName: string) {
@@ -247,6 +244,7 @@ export const useSearchGroupsStore = defineStore('searchGroups', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, categoryId, limit: Number(cfg.limit) || 1, config: cfg, roundId }),
+
         signal: AbortSignal.timeout(300_000),
       })
       if (!res.body) throw new Error('No response stream')
@@ -312,7 +310,7 @@ export const useSearchGroupsStore = defineStore('searchGroups', () => {
     }
   }
 
-  async function runGroup(grp: CategoryGroup, cfg: Record<string, unknown>) {
+  async function runGroup(grp: CategoryGroup, getCfg: (srcName: string) => Record<string, unknown>) {
     if (grp.queries.length === 0) return
     grp.running = true
     const roundId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6)
@@ -332,7 +330,7 @@ export const useSearchGroupsStore = defineStore('searchGroups', () => {
           while (active < CONCURRENCY && hits + active < TARGET_HITS && qi < queue.length) {
             const src = queue[qi++]
             active++
-            runSource(grp, src, cfg, roundId).then(() => {
+            runSource(grp, src, getCfg(src.name), roundId).then(() => {
               active--
               if (srcExtracted(grp, src.name).length > 0) hits++
               if (hits >= TARGET_HITS || (qi >= queue.length && active === 0)) {
@@ -358,6 +356,7 @@ export const useSearchGroupsStore = defineStore('searchGroups', () => {
     addOptionalField,
     removeOptionalField,
     addQuery,
+    grpTotalItems,
     srcExtracted,
     runGroup,
   }
