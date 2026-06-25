@@ -1,4 +1,4 @@
-﻿import { chromium, type Browser, type BrowserContext } from 'playwright'
+import { chromium, type Browser, type BrowserContext } from 'playwright'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -6,6 +6,7 @@ import { appendLog, saveItems } from '../utils/logger'
 import { mergeScreenshotConfig, type ScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
 import { appendResult } from '../utils/resultsStore'
 import { dismissCookieBanner, createStealthContext, scrollForLazyContent , takeScreenshot} from '../utils/browserUtils'
+import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
 
 interface ItemResult {
@@ -92,9 +93,9 @@ async function newPersistentContext(cfg: ReturnType<typeof buildScreenshotOption
 
 
 export default defineEventHandler(async (event) => {
-  const { query, categoryId = '103', template, limit, screenshotConfig: screenshotConfigRaw, roundId } = await readBody<{
+  const { query, categoryId = '103', template, limit, config: configRaw, roundId } = await readBody<{
     query: string; categoryId?: string; template?: Record<string, string>; limit?: number; screenshotConfig?: import('../utils/screenshotConfig').ScreenshotConfig; roundId?: string}>(event)
-  const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(screenshotConfigRaw))
+  const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(configRaw))
 
   if (!query?.trim()) throw createError({ statusCode: 400, message: 'query required' })
 
@@ -303,7 +304,7 @@ export default defineEventHandler(async (event) => {
             await gotoWithBotRetry(page, url, emit, 3)
             await dismissCookieBanner(page)
 
-            // Expand hidden description by removing CSS max-height constraint
+            // Expand hidden description before screenshot
             await page.evaluate(() => {
               const content = document.querySelector<HTMLElement>('.js_detailed-content')
               if (content) { content.style.maxHeight = 'none'; content.style.overflow = 'visible' }
@@ -312,51 +313,7 @@ export default defineEventHandler(async (event) => {
             })
             await page.waitForTimeout(300)
 
-            // Extract structured data directly from HTML (no Gemini vision needed)
-            const extracted = await page.evaluate(() => {
-              const data: Record<string, string> = {}
-
-              // Price — keep digits and dot so decimal is preserved before rounding
-              const priceEl = document.querySelector('.price-wrapper .price, [data-price-type="finalPrice"] .price')
-              if (priceEl) {
-                const raw = priceEl.textContent?.replace(/[^\d.]/g, '') ?? ''
-                if (raw) data.price = String(Math.round(parseFloat(raw)))
-                data.currency = 'THB'
-              }
-
-              // Attributes table
-              document.querySelectorAll('#product-attribute-specs-table tr').forEach((tr) => {
-                const label = tr.querySelector('.label')?.textContent?.trim() ?? ''
-                const value = tr.querySelector('.data')?.textContent?.trim() ?? ''
-                if (label && value) data[label] = value
-              })
-
-              // Description intentionally omitted — verbose, data already in table above
-
-              return data
-            })
-
-            emit('info', `[${i + 1}] Extracted ${Object.keys(extracted).length} fields from HTML`)
-
-            // Map Thai attribute labels to English field names
-            const LABEL_MAP: Record<string, string> = {
-              'แบรนด์': 'brand', 'รุ่น': 'model', 'รหัสสินค้า': 'ref',
-              'อุปกรณ์เสริม': 'accessories', 'วิธีการจัดส่ง': 'delivery',
-              'สภาพสินค้า': 'condition', 'ปี': 'year',
-              'เส้นผ่าศูนย์กลางหน้าปัด': 'caseSize', 'ฟังก์ชั่นนาฬิกา': 'functions',
-              'วัสดุกรอบหน้าปัด': 'bezelMaterial', 'วัสดุสาย': 'strapMaterial',
-              'สีหน้าปัด': 'dialColor', 'สไตล์': 'style',
-              'วัสดุตัวเรือน': 'caseMaterial', 'ระบบ': 'movement',
-            }
-            const item: Record<string, string> = {}
-            for (const [k, v] of Object.entries(extracted)) {
-              const mapped = LABEL_MAP[k] ?? k
-              item[mapped] = v
-            }
-            result.items = [item]
-            result.extractOk = true
-
-            // Screenshot for reference
+            // Screenshot
             await page.evaluate(() => window.scrollTo(0, 0))
             await scrollForLazyContent(page)
             const buffer = await takeScreenshot(page, screenshotCfg)
@@ -367,10 +324,22 @@ export default defineEventHandler(async (event) => {
             result.screenshotOk = true
             emit('info', `[${i + 1}] Screenshot saved`, { filename })
 
+            // Extract with Gemini
+            emit('info', `[${i + 1}] Extracting with Gemini`)
+            const { text, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight } = await callGemini(geminiModel, extractPrompt, base64)
+            try {
+              result.items = JSON.parse(text)
+              result.extractOk = true
+              emit('info', `[${i + 1}] Extracted ${result.items.length} item(s)`)
+            } catch {
+              result.raw = text
+              emit('warn', `[${i + 1}] Gemini response not valid JSON`, { preview: text.slice(0, 120) })
+            }
+
             const dataFile = result.items.length > 0 ? await saveItems(result.items, categoryId, filename).catch(() => null) : null
             const ts = new Date().toISOString()
             await Promise.all([
-              appendLog({ timestamp: ts, source: 'auctionhouse', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null }).catch(() => {}),
+              appendLog({ timestamp: ts, source: 'auctionhouse', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight }).catch(() => {}),
               appendResult({ timestamp: ts, source: 'auctionhouse', url, categoryId, screenshotFile: filename, items: result.items as Record<string, any>[], roundId, searchQuery: query }).catch(() => {}),
             ])
           } finally {

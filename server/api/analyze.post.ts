@@ -7,6 +7,7 @@ import type { LogEntry } from '../utils/logger'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
 import type { ScreenshotConfig } from '../utils/screenshotConfig'
 import { takeScreenshot } from '../utils/browserUtils'
+import { callGemini } from '../utils/geminiClient'
 
 
 const SOURCE_CODES: Record<string, string> = {
@@ -73,13 +74,13 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
 }
 
 export default defineEventHandler(async (event) => {
-  const { url, categoryId, template, screenshotConfig: screenshotConfigRaw } = await readBody<{
+  const { url, categoryId, template, config: configRaw } = await readBody<{
     url: string
     categoryId?: string
     template?: Record<string, string>
-    screenshotConfig?: Partial<ScreenshotConfig>
+    config?: Partial<ScreenshotConfig>
   }>(event)
-  const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(screenshotConfigRaw))
+  const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(configRaw))
 
   if (!url) throw createError({ statusCode: 400, message: 'url required' })
 
@@ -189,12 +190,10 @@ ${schemaText}
   const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
 
   let text: string
+  let geminiInputTokens: number | undefined
+  let geminiOutputTokens: number | undefined
   try {
-    const result = await model.generateContent([
-      prompt,
-      { inlineData: { data: base64, mimeType } },
-    ])
-    text = result.response.text().trim()
+    ;({ text, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight, imageWidth, imageHeight } = await callGemini(model, prompt, base64, mimeType))
   } catch (err: any) {
     await appendLog({
       timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
@@ -214,6 +213,7 @@ ${schemaText}
       timestamp: new Date().toISOString(), source: extractDomain(url), url,
       categoryId: cat, durationMs: Date.now() - startedAt, httpStatus: 200,
       screenshotFile: filename, dataFile, error: null, errorType: null,
+      geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight,
     }).catch(() => {})
     return { filename, base64, mimeType, items }
   } catch {

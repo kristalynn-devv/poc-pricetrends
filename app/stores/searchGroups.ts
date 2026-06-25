@@ -239,7 +239,7 @@ export const useSearchGroupsStore = defineStore('searchGroups', () => {
       const res = await fetch(src.apiRoute!, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, categoryId, limit: Number(cfg.limit) || 1, screenshotConfig: cfg, roundId }),
+        body: JSON.stringify({ query, categoryId, limit: Number(cfg.limit) || 1, config: cfg, roundId }),
         signal: AbortSignal.timeout(300_000),
       })
       if (!res.body) throw new Error('No response stream')

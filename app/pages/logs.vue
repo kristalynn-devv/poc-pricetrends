@@ -64,6 +64,24 @@
               </v-card-text>
             </v-card>
           </v-col>
+          <v-col cols="12" sm="3">
+            <v-card rounded="lg" variant="tonal" color="deep-purple">
+              <v-card-text class="pa-4">
+                <div class="d-flex justify-space-between align-start">
+                  <div>
+                    <div class="text-caption text-medium-emphasis">Input tokens</div>
+                    <div class="text-h6 font-weight-bold">{{ summary.totalInputTokens?.toLocaleString() ?? '-' }}</div>
+                  </div>
+                  <v-divider vertical class="mx-3" />
+                  <div>
+                    <div class="text-caption text-medium-emphasis">Output tokens</div>
+                    <div class="text-h6 font-weight-bold">{{ summary.totalOutputTokens?.toLocaleString() ?? '-' }}</div>
+                  </div>
+                </div>
+                <div class="text-caption text-medium-emphasis mt-1">Gemini tokens วันนี้</div>
+              </v-card-text>
+            </v-card>
+          </v-col>
         </v-row>
 
         <v-row class="mb-4" dense>
@@ -227,6 +245,12 @@
           <template #[`item.durationMs`]="{ item }">
             <span class="text-caption">{{ item.durationMs.toLocaleString() }} ms</span>
           </template>
+          <template #[`item.tokens`]="{ item }">
+            <span v-if="item.geminiInputTokens != null" class="text-caption text-medium-emphasis">
+              {{ item.geminiInputTokens.toLocaleString() }} / {{ (item.geminiOutputTokens ?? 0).toLocaleString() }}
+            </span>
+            <span v-else class="text-disabled">-</span>
+          </template>
         </v-data-table>
       </v-card>
     </template>
@@ -302,7 +326,6 @@
 </template>
 
 <script setup lang="ts">
-import { useLogsEntriesStore } from '~/stores/logsEntries'
 
 const store = useLogsEntriesStore()
 const route = useRoute()
@@ -339,6 +362,7 @@ const entryHeaders = [
   { title: 'URL', key: 'url' },
   { title: 'Error', key: 'error' },
   { title: 'ms', key: 'durationMs', width: 90 },
+  { title: 'in/out tokens', key: 'tokens', width: 130 },
 ]
 
 const detailRows = computed(() => {
@@ -357,6 +381,9 @@ const detailRows = computed(() => {
     ['durationMs', e.durationMs != null ? `${e.durationMs.toLocaleString()} ms` : null],
     ['errorType', e.errorType],
     ['error', e.error],
+    ['geminiInputTokens', e.geminiInputTokens != null ? e.geminiInputTokens.toLocaleString() : null],
+    ['geminiOutputTokens', e.geminiOutputTokens != null ? e.geminiOutputTokens.toLocaleString() : null],
+    ['imageResolution', e.imageWidth != null ? `${e.imageWidth} × ${e.imageHeight} px` : null],
   ]
 })
 

@@ -63,70 +63,76 @@
       </v-tabs>
 
       <v-window v-model="selectedRound">
-        <v-window-item v-for="round in rounds" :key="round.roundId" :value="round.roundId" eager>
-          <template v-for="(catGroup, ci) in round.byCategory" :key="ci">
-            <!-- Category section header -->
-            <div class="d-flex align-center ga-2 px-1 pt-4 pb-2">
-              <v-chip size="small" label color="primary" variant="tonal">{{ catLabel(catGroup.categoryId) }}</v-chip>
-              <span class="text-caption text-medium-emphasis">{{catGroup.entries.flatMap((e: any) => e.items).length}}
-                items</span>
-            </div>
-
-            <!-- Entry cards -->
-            <v-card v-for="(group, gi) in catGroup.entries" :key="gi" rounded="lg" class="mb-3">
-              <v-card-title class="d-flex align-center ga-1 pa-3 pb-0 flex-wrap">
-                <v-chip size="x-small" label>{{ group.source }}</v-chip>
-                <v-chip v-if="group.searchQuery" size="x-small" color="primary" variant="tonal" label
-                  prepend-icon="mdi-magnify">{{ group.searchQuery }}</v-chip>
-                <v-spacer />
-                <span class="text-caption text-disabled font-weight-regular">{{ formatTime(group.timestamp) }}</span>
-                <v-btn v-if="group.screenshotFile" icon="mdi-text-box-search-outline" size="x-small" variant="text"
-                  :title="'ดู log'" @click.stop="viewLog(group)" />
-                <v-btn icon="mdi-open-in-new" size="x-small" variant="text" :href="group.url" target="_blank" />
-              </v-card-title>
-
-              <v-divider class="mt-2" />
-
-              <div class="d-flex">
-                <div v-if="group.screenshotFile" class="pa-3 flex-shrink-0">
-                  <ScreenshotImg :src="`/api/screenshot?file=${group.screenshotFile}`" thumbnail width="160"
-                    height="90" />
+        <v-window-item v-for="round in rounds" :key="round.roundId" :value="round.roundId">
+          <v-expansion-panels  class="mt-2">
+            <v-expansion-panel v-for="(catGroup, ci) in round.byCategory" :key="ci">
+              <v-expansion-panel-title>
+                <div class="d-flex align-center ga-2">
+                  <v-chip size="small" label color="primary" variant="tonal">{{ catLabel(catGroup.categoryId) }}</v-chip>
+                  <span class="text-caption text-medium-emphasis">
+                    {{ catGroup.entries.flatMap((e: any) => e.items).length }} items
+                    · {{ catGroup.entries.length }} sources
+                  </span>
                 </div>
-                <div class="flex-grow-1 overflow-x-auto">
-                  <v-table density="compact" class="text-body-2">
-                    <thead>
-                      <tr>
-                        <th v-for="col in getColumns(group.items, group.categoryId)" :key="col">{{ col }}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="(item, ii) in group.items" :key="ii">
-                        <td v-for="col in getColumns(group.items, group.categoryId)" :key="col">
-                          <template v-if="col === 'price'">
-                            <span class="font-weight-medium">{{ item[col] != null ?
-                              Number(item[col]).toLocaleString('en-US',
-                                { maximumFractionDigits: 0 }) : '-' }}</span>
-                          </template>
-                          <template v-else-if="col === 'condition'">
-                            <v-chip v-if="item[col]" size="x-small" :color="conditionColor(item[col])"
-                              variant="tonal">{{
-                                item[col] }}</v-chip>
-                            <span v-else class="text-disabled">-</span>
-                          </template>
-                          <template v-else>
-                            <span>{{ item[col] ?? '-' }}</span>
-                          </template>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </v-table>
-                </div>
-              </div>
+              </v-expansion-panel-title>
+              <v-expansion-panel-text class="pa-0">
+                <!-- Entry cards -->
+                <v-card v-for="(group, gi) in catGroup.entries" :key="gi" rounded="0"
+                  :class="gi < catGroup.entries.length - 1 ? 'border-b' : ''">
+                  <v-card-title class="d-flex align-center ga-1 pa-3 pb-0 flex-wrap">
+                    <v-chip size="x-small" label>{{ group.source }}</v-chip>
+                    <v-chip v-if="group.searchQuery" size="x-small" color="primary" variant="tonal" label
+                      prepend-icon="mdi-magnify">{{ group.searchQuery }}</v-chip>
+                    <v-spacer />
+                    <span class="text-caption text-disabled font-weight-regular">{{ formatTime(group.timestamp) }}</span>
+                    <v-btn v-if="group.screenshotFile" icon="mdi-text-box-search-outline" size="x-small" variant="text"
+                      :title="'ดู log'" @click.stop="viewLog(group)" />
+                    <v-btn icon="mdi-open-in-new" size="x-small" variant="text" :href="group.url" target="_blank" />
+                  </v-card-title>
 
-              <v-card-text v-if="group.items.length === 0" class="text-disabled text-center py-4">ไม่มี
-                item</v-card-text>
-            </v-card>
-          </template>
+                  <v-divider class="mt-2" />
+
+                  <div class="d-flex">
+                    <div v-if="group.screenshotFile" class="pa-3 flex-shrink-0">
+                      <ScreenshotImg :src="`/api/screenshot?file=${group.screenshotFile}`" thumbnail width="160"
+                        height="90" />
+                    </div>
+                    <div class="flex-grow-1 overflow-x-auto">
+                      <v-table density="compact" class="text-body-2">
+                        <thead>
+                          <tr>
+                            <th v-for="col in getColumns(group.items, group.categoryId)" :key="col">{{ col }}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="(item, ii) in group.items" :key="ii">
+                            <td v-for="col in getColumns(group.items, group.categoryId)" :key="col">
+                              <template v-if="col === 'price'">
+                                <span class="font-weight-medium">{{ item[col] != null ?
+                                  Number(item[col]).toLocaleString('en-US',
+                                    { maximumFractionDigits: 0 }) : '-' }}</span>
+                              </template>
+                              <template v-else-if="col === 'condition'">
+                                <v-chip v-if="item[col]" size="x-small" :color="conditionColor(item[col])"
+                                  variant="tonal">{{ item[col] }}</v-chip>
+                                <span v-else class="text-disabled">-</span>
+                              </template>
+                              <template v-else>
+                                <span>{{ item[col] ?? '-' }}</span>
+                              </template>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </v-table>
+                    </div>
+                  </div>
+
+                  <v-card-text v-if="group.items.length === 0" class="text-disabled text-center py-4">ไม่มี
+                    item</v-card-text>
+                </v-card>
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
         </v-window-item>
       </v-window>
     </template>
@@ -135,8 +141,6 @@
 </template>
 
 <script setup lang="ts">
-import { useLogsEntriesStore } from '~/stores/logsEntries'
-import { useCategoryFields } from '../composables/useCategoryFields'
 
 const store = useLogsEntriesStore()
 const route = useRoute()
@@ -168,14 +172,10 @@ const datePickerDate = computed({
 
 watch(rounds, (newRounds) => {
   const targetRound = typeof route.query.round === 'string' ? route.query.round : null
-  if (newRounds.length > 0) {
-    if (targetRound && newRounds.some(r => r.roundId === targetRound)) {
-      selectedRound.value = targetRound
-    } else if (!selectedRound.value || !newRounds.some(r => r.roundId === selectedRound.value)) {
-      selectedRound.value = newRounds[0].roundId
-    }
+  if (newRounds.length > 0 && targetRound && newRounds.some((r: any) => r.roundId === targetRound)) {
+    selectedRound.value = targetRound
   }
-}, { immediate: true })
+})
 
 function catLabel(id: string | null) {
   if (!id || id === '__none__') return 'ไม่ระบุหมวด'

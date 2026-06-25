@@ -12,13 +12,14 @@ const DEFAULTS = {
   limit: 1,
 }
 
-export const useScreenshotConfigStore = defineStore('screenshotConfig', () => {
+export const useGlobalConfigStore = defineStore('globalConfig', () => {
   function loadFromStorage() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (raw) {
         const parsed = JSON.parse(raw)
-        return { ...DEFAULTS, ...parsed, clip: { ...DEFAULTS.clip, ...(parsed.clip ?? {}) } }
+        const cropHeight = parsed.cropHeight != null ? Number(parsed.cropHeight) : undefined
+        return { ...DEFAULTS, ...parsed, cropHeight: cropHeight && cropHeight > 0 ? cropHeight : undefined, clip: { ...DEFAULTS.clip, ...(parsed.clip ?? {}) } }
       }
     } catch {}
     return { ...DEFAULTS, clip: { ...DEFAULTS.clip } }

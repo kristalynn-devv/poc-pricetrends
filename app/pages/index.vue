@@ -10,7 +10,7 @@
           class="text-none">รายการข้อมูล</v-btn>
         <v-btn variant="text" prepend-icon="mdi-text-box-outline" to="/logs" size="small" class="text-none">System
           Logs</v-btn>
-        <v-btn icon="mdi-tune" size="small" variant="text" @click="screenshotCfgOpen = true" />
+        <v-btn icon="mdi-tune" size="small" variant="text" @click="configOpen = true" />
       </v-col>
     </v-row>
 
@@ -149,32 +149,32 @@
     </v-expansion-panels>
 
     <!-- ── Config Dialog ── -->
-    <v-dialog v-model="screenshotCfgOpen" max-width="400">
+    <v-dialog v-model="configOpen" max-width="400">
       <v-card>
         <v-card-title class="d-flex align-center ga-1 pt-4 px-4">
           <v-icon size="small">mdi-tune</v-icon>
           <span class="">การตั้งค่า</span>
           <v-spacer />
-          <v-btn icon="mdi-close" size="small" variant="text" @click="screenshotCfgOpen = false" />
+          <v-btn icon="mdi-close" size="small" variant="text" @click="configOpen = false" />
         </v-card-title>
         <v-card-text class="px-4 pb-2">
-          <v-form @submit.prevent="screenshotCfgOpen = false">
+          <v-form @submit.prevent="configOpen = false">
             <v-row dense class="mb-2">
               <v-col cols="5">
-                <v-text-field v-model.number="cfg.viewportWidth" label="Width (px)" type="number"
+                <v-text-field :model-value="cfg.viewportWidth" @update:model-value="v => cfg.viewportWidth = v ? Number(v) : 1920" label="Width (px)" type="number"
                   variant="outlined" density="compact" hide-details clearable />
               </v-col>
               <v-col cols="2" class="d-flex align-center justify-center">
                 <span class="text-body-2 text-medium-emphasis">×</span>
               </v-col>
               <v-col cols="5">
-                <v-text-field v-model.number="cfg.viewportHeight" label="Height (px)" type="number"
+                <v-text-field :model-value="cfg.viewportHeight" @update:model-value="v => cfg.viewportHeight = v ? Number(v) : 1080" label="Height (px)" type="number"
                   variant="outlined" density="compact" hide-details :disabled="cfg.fullPage" clearable />
               </v-col>
             </v-row>
             <v-row dense align="center" class="mb-2">
               <v-col cols="6">
-                <v-text-field v-model.number="cfg.quality" label="Quality (1–100)" type="number"
+                <v-text-field :model-value="cfg.quality" @update:model-value="v => cfg.quality = v ? Number(v) : 85" label="Quality (1–100)" type="number"
                   variant="outlined" density="compact" hide-details clearable />
               </v-col>
               <v-col cols="6" class="d-flex justify-end">
@@ -184,7 +184,7 @@
             </v-row>
             <v-row dense class="mb-2">
               <v-col cols="7">
-                <v-text-field v-model.number="cfg.cropHeight" label="Crop height (px)" type="number"
+                <v-text-field :model-value="cfg.cropHeight" @update:model-value="v => cfg.cropHeight = v ? Number(v) : undefined" label="Crop height (px)" type="number"
                   variant="outlined" density="compact" hide-details clearable placeholder="ไม่ตัด" />
               </v-col>
             </v-row>
@@ -200,7 +200,7 @@
         <v-card-actions class="px-4 pb-4">
           <v-btn variant="text" size="small" class="text-none" @click="cfgStore.reset()">Reset</v-btn>
           <v-spacer />
-          <v-btn color="primary" size="small" class="text-none" @click="screenshotCfgOpen = false">ตกลง</v-btn>
+          <v-btn color="primary" size="small" class="text-none" @click="configOpen = false">ตกลง</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -273,11 +273,8 @@
 </template>
 
 <script setup lang="ts">
-import { useCategoryFields } from '~/composables/useCategoryFields'
-import { useScreenshotConfigStore } from '~/stores/screenshotConfig'
-import { useSearchGroupsStore } from '~/stores/searchGroups'
 
-const cfgStore = useScreenshotConfigStore()
+const cfgStore = useGlobalConfigStore()
 const groupsStore = useSearchGroupsStore()
 
 const { cfg } = storeToRefs(cfgStore)
@@ -286,7 +283,7 @@ const { groups } = storeToRefs(groupsStore)
 groupsStore.init()
 
 // ── Local UI state ─────────────────────────────────────────────────────────────
-const screenshotCfgOpen = ref(false)
+const configOpen = ref(false)
 const openPanels = ref<number[]>([0, 1, 2, 3, 4])
 
 // ── Source detail dialog ───────────────────────────────────────────────────────

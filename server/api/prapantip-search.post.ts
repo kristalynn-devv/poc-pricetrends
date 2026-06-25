@@ -1,4 +1,4 @@
-﻿import { chromium } from 'playwright'
+import { chromium } from 'playwright'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { writeFile, mkdir } from 'node:fs/promises'
@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { appendLog, saveItems } from '../utils/logger'
 import { appendResult } from '../utils/resultsStore'
 import { dismissCookieBanner, scrollForLazyContent , takeScreenshot, filterListingsByQuery} from '../utils/browserUtils'
+import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
 
 interface ItemResult {
@@ -30,9 +31,9 @@ function buildFilename(index: number): string {
 
 
 export default defineEventHandler(async (event) => {
-  const { query, categoryId = '106', template, limit, screenshotConfig: screenshotConfigRaw, roundId } = await readBody<{
+  const { query, categoryId = '106', template, limit, config: configRaw, roundId } = await readBody<{
     query: string; categoryId?: string; template?: Record<string, string>; limit?: number; screenshotConfig?: import('../utils/screenshotConfig').ScreenshotConfig; roundId?: string}>(event)
-  const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(screenshotConfigRaw))
+  const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(configRaw))
 
   if (!query?.trim()) throw createError({ statusCode: 400, message: 'query required' })
 
@@ -139,8 +140,7 @@ export default defineEventHandler(async (event) => {
 
             emit('info', `[${i + 1}] Extracting with Gemini`)
             try {
-              const geminiResult = await geminiModel.generateContent([extractPrompt, { inlineData: { data: base64, mimeType: 'image/jpeg' } }])
-              const text = geminiResult.response.text().trim()
+                            const { text, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight } = await callGemini(geminiModel, extractPrompt, base64)
               try {
                 result.items = sanitizeItems(JSON.parse(text))
                 result.extractOk = true
@@ -148,7 +148,7 @@ export default defineEventHandler(async (event) => {
                 const dataFile = result.items.length > 0 ? await saveItems(result.items, categoryId, filename).catch(() => null) : null
                 const ts = new Date().toISOString()
                 await Promise.all([
-                  appendLog({ timestamp: ts, source: 'prapantip', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null }).catch(() => {}),
+                  appendLog({ timestamp: ts, source: 'prapantip', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight }).catch(() => {}),
                   appendResult({ timestamp: ts, source: 'prapantip', url, categoryId, screenshotFile: filename, items: result.items as Record<string, any>[], roundId, searchQuery: query }).catch((e) => emit('warn', 'appendResult failed', String(e))),
                 ])
               } catch {

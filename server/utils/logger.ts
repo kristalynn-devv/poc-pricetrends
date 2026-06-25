@@ -15,6 +15,10 @@ export interface LogEntry {
   dataFile: string | null
   error: string | null
   errorType: 'timeout' | 'screenshot' | 'extraction' | 'parse' | 'config' | null
+  geminiInputTokens?: number
+  geminiOutputTokens?: number
+  imageWidth?: number
+  imageHeight?: number
 }
 
 export async function saveItems(
@@ -55,6 +59,8 @@ export interface DailySummary {
   success: number
   failed: number
   avgDurationMs: number
+  totalInputTokens: number
+  totalOutputTokens: number
   errors: Array<{ timestamp: string; url: string; source: string; searchQuery?: string; errorType: string | null; error: string }>
   bySource: Record<string, { total: number; success: number; failed: number }>
   byCategory: Record<string, { total: number; success: number }>
@@ -80,6 +86,8 @@ export async function readDailySummary(dateStr?: string): Promise<DailySummary> 
     success: 0,
     failed: 0,
     avgDurationMs: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
     errors: [],
     bySource: {},
     byCategory: {},
@@ -102,6 +110,8 @@ export async function readDailySummary(dateStr?: string): Promise<DailySummary> 
       })
     }
     totalDuration += e.durationMs
+    summary.totalInputTokens += e.geminiInputTokens ?? 0
+    summary.totalOutputTokens += e.geminiOutputTokens ?? 0
 
     const src = e.source ?? extractDomain(e.url)
     summary.bySource[src] ??= { total: 0, success: 0, failed: 0 }

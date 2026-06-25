@@ -91,6 +91,8 @@ export const useLogsEntriesStore = defineStore('logsEntries', () => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       resultEntries.value = data.entries ?? []
+      selectedRound.value = null
+      await nextTick()
       selectedRound.value = rounds.value[0]?.roundId ?? null
     } catch (err: any) {
       entriesFetchError.value = err?.message ?? 'โหลดข้อมูลล้มเหลว'

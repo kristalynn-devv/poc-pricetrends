@@ -28,9 +28,17 @@ export const DEFAULT_SCREENSHOT_CONFIG: ScreenshotConfig = {
 
 export function mergeScreenshotConfig(partial?: Partial<ScreenshotConfig>): ScreenshotConfig {
   if (!partial) return DEFAULT_SCREENSHOT_CONFIG
+  const cropHeight = partial.cropHeight != null ? Number(partial.cropHeight) : undefined
+  const vw = partial.viewportWidth ? Number(partial.viewportWidth) : DEFAULT_SCREENSHOT_CONFIG.viewportWidth
+  const vh = partial.viewportHeight ? Number(partial.viewportHeight) : DEFAULT_SCREENSHOT_CONFIG.viewportHeight
+  const quality = partial.quality ? Number(partial.quality) : DEFAULT_SCREENSHOT_CONFIG.quality
   return {
     ...DEFAULT_SCREENSHOT_CONFIG,
     ...partial,
+    viewportWidth: vw,
+    viewportHeight: vh,
+    quality,
+    cropHeight: cropHeight && cropHeight > 0 ? cropHeight : undefined,
     clip: { ...DEFAULT_SCREENSHOT_CONFIG.clip, ...(partial.clip ?? {}) },
   }
 }

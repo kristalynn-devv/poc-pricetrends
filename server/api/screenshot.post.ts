@@ -38,10 +38,10 @@ function buildFilename(url: string, categoryId?: string): string {
 }
 
 export default defineEventHandler(async (event) => {
-  const { url, categoryId, screenshotConfig: screenshotConfigRaw } = await readBody<{
-    url: string; categoryId?: string; screenshotConfig?: import('../utils/screenshotConfig').ScreenshotConfig
+  const { url, categoryId, config: configRaw } = await readBody<{
+    url: string; categoryId?: string; config?: import('../utils/screenshotConfig').ScreenshotConfig
   }>(event)
-  const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(screenshotConfigRaw))
+  const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(configRaw))
   if (!url) throw createError({ statusCode: 400, message: 'url required' })
 
   const browser = await chromium.launch({
