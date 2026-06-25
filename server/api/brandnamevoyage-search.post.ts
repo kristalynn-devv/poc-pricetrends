@@ -2,21 +2,21 @@ import type { ItemResult } from '../utils/routeHelpers'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { appendLog, saveItems } from '../utils/logger'
-import { appendResult } from '../utils/resultsStore'
+import { appendLog } from '../utils/logger'
+import { persistExtraction } from '../utils/persistExtraction'
 import { createStealthContext, dismissCookieBanner, takeScreenshot, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
+import { buildScreenshotFilename } from '../utils/filename'
 
 const BNV_BASE = 'https://brandnamevoyage.com'
 
 const PRODUCT_URL_RE = /brandnamevoyage\.com\/product\/[^/?#]+/
 
 function buildFilename(index: number, url: string): string {
-  const date = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)
   const slugMatch = url.replace(/[?#].*$/, '').replace(/\/$/, '').match(/\/([^/]+)$/)
   const slug = slugMatch ? slugMatch[1].slice(0, 30) : String(index + 1).padStart(2, '0')
-  return `${date}_108_BNV_${slug}.jpg`
+  return buildScreenshotFilename('108', 'BNV', slug)
 }
 
 
@@ -139,12 +139,12 @@ export default defineEventHandler(async (event) => {
             result.items = sanitizeItems(JSON.parse(text))
             result.extractOk = true
             emit('info', `[${i + 1}] Extracted ${result.items.length} item(s)`)
-            const dataFile = result.items.length > 0 ? await saveItems(result.items, categoryId, filename).catch(() => null) : null
             const ts = new Date().toISOString()
-            await Promise.all([
-              appendLog({ timestamp: ts, source: 'brandnamevoyage', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight }).catch(() => {}),
-              appendResult({ timestamp: ts, source: 'brandnamevoyage', url, categoryId, screenshotFile: filename, items: result.items as Record<string, any>[], roundId, searchQuery: query }).catch((e) => emit('warn', 'appendResult failed', String(e))),
-            ])
+await persistExtraction({
+  timestamp: ts, source: 'brandnamevoyage', url, categoryId, screenshotFile: filename,
+  items: result.items as Record<string, any>[], durationMs: Date.now() - itemStart,
+  searchQuery: query, roundId, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight,
+}).catch((e) => emit('warn', 'persistExtraction failed', String(e)))
           } catch {
             result.raw = text
             result.extractOk = false

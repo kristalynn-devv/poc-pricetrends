@@ -1,17 +1,19 @@
 import { defineStore } from 'pinia'
-
-const CATEGORY_NAMES: Record<string, string> = {
-  '103': 'นาฬิกา',
-  '106': 'พระ / วัตถุมงคล',
-  '107': 'IT / โน้ตบุ๊ก',
-  '108': 'แบรนด์เนม',
-  '109': 'สมาร์ทโฟน',
-  '110': 'แว่นตา',
-  '111': 'เครื่องมือช่าง',
-  '112': 'อุปกรณ์ไอที',
-}
+import type { DailySummary, LogEntry } from '#shared/types/log'
+import type { ResultEntry } from '#shared/types/result'
+import { CATEGORY_NAMES } from '#shared/constants/categories'
+import { extractDomain } from '#shared/utils/domain'
+import {
+  fetchDailyResults,
+  fetchDailySummary,
+  fetchLogEntries,
+  fetchResultByScreenshot,
+} from '~/lib/api'
 
 export const useLogsEntriesStore = defineStore('logsEntries', () => {
+  const config = useRuntimeConfig()
+  const apiBase = computed(() => (config.public.apiBase as string) || '')
+
   // ── Shared ────────────────────────────────────────────────────────────────────
   const today = new Date().toISOString().slice(0, 10)
   const selectedDate = ref(today)
@@ -25,7 +27,7 @@ export const useLogsEntriesStore = defineStore('logsEntries', () => {
   // ── Entries page ──────────────────────────────────────────────────────────────
   const entriesLoading = ref(false)
   const entriesFetchError = ref<string | null>(null)
-  const resultEntries = ref<any[]>([])
+  const resultEntries = ref<ResultEntry[]>([])
   const entriesSearch = ref('')
   const entriesFilterSrc = ref('ทั้งหมด')
   const entriesFilterCat = ref('ทั้งหมด')
@@ -48,27 +50,27 @@ export const useLogsEntriesStore = defineStore('logsEntries', () => {
       .map(e => {
         if (!entriesSearch.value) return e
         const q = entriesSearch.value.toLowerCase()
-        const filteredItems = e.items.filter((item: any) =>
+        const filteredItems = e.items.filter((item) =>
           Object.values(item).some((v) => String(v ?? '').toLowerCase().includes(q))
         )
         return filteredItems.length > 0 ? { ...e, items: filteredItems } : null
       })
-      .filter(Boolean)
+      .filter(Boolean) as ResultEntry[]
   })
 
   const rounds = computed(() => {
-    const map = new Map<string, any[]>()
+    const map = new Map<string, ResultEntry[]>()
     for (const e of filteredGroups.value) {
-      const key = (e as any).roundId ?? '__legacy__'
+      const key = e.roundId ?? '__legacy__'
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(e)
     }
     return [...map.entries()]
       .map(([roundId, entries]) => {
-        entries.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+        entries.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
         const timestamp = entries[0].timestamp
-        const query = entries.find((e: any) => e.searchQuery)?.searchQuery ?? ''
-        const catMap = new Map<string, any[]>()
+        const query = entries.find(e => e.searchQuery)?.searchQuery ?? ''
+        const catMap = new Map<string, ResultEntry[]>()
         for (const e of entries) {
           const cat = e.categoryId ?? '__none__'
           if (!catMap.has(cat)) catMap.set(cat, [])
@@ -80,22 +82,20 @@ export const useLogsEntriesStore = defineStore('logsEntries', () => {
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
   })
 
-  const flatItems = computed(() => filteredGroups.value.flatMap((g: any) => g.items))
+  const flatItems = computed(() => filteredGroups.value.flatMap(g => g.items))
 
   async function fetchResultEntries() {
     entriesLoading.value = true
     entriesFetchError.value = null
     const dateParam = selectedDate.value.replace(/-/g, '')
     try {
-      const res = await fetch(`/api/results/entries?date=${dateParam}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
+      const data = await fetchDailyResults(dateParam, apiBase.value)
       resultEntries.value = data.entries ?? []
       selectedRound.value = null
       await nextTick()
       selectedRound.value = rounds.value[0]?.roundId ?? null
-    } catch (err: any) {
-      entriesFetchError.value = err?.message ?? 'โหลดข้อมูลล้มเหลว'
+    } catch (err: unknown) {
+      entriesFetchError.value = (err as Error)?.message ?? 'โหลดข้อมูลล้มเหลว'
       resultEntries.value = []
       selectedRound.value = null
     } finally {
@@ -106,8 +106,8 @@ export const useLogsEntriesStore = defineStore('logsEntries', () => {
   // ── Logs page ─────────────────────────────────────────────────────────────────
   const logsLoading = ref(false)
   const logsFetchError = ref<string | null>(null)
-  const summary = ref<any>(null)
-  const logEntries = ref<any[]>([])
+  const summary = ref<DailySummary | null>(null)
+  const logEntries = ref<LogEntry[]>([])
   const activeView = ref<'summary' | 'entries'>('summary')
   const logsSearch = ref('')
   const logsFilterSrc = ref('ทั้งหมด')
@@ -115,27 +115,23 @@ export const useLogsEntriesStore = defineStore('logsEntries', () => {
   const logsFilterResult = ref('all')
 
   const logsDetailOpen = ref(false)
-  const logsDetailEntry = ref<any>(null)
-  const logsDetailItems = ref<any[]>([])
+  const logsDetailEntry = ref<LogEntry | null>(null)
+  const logsDetailItems = ref<Record<string, unknown>[]>([])
   const logsDetailItemsLoading = ref(false)
 
-  function entryDomain(e: any): string {
+  function entryDomain(e: LogEntry): string {
     return e.source ?? extractDomain(e.url)
-  }
-
-  function extractDomain(url: string): string {
-    try { return new URL(url).hostname.replace(/^www\./, '').split('.')[0] } catch { return 'unknown' }
   }
 
   const sortedErrors = computed(() =>
     [...(summary.value?.errors ?? [])].sort(
-      (a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     )
   )
 
   const logsAvailableSources = computed(() => [...new Set(logEntries.value.map(entryDomain))])
   const logsAvailableCategories = computed(() =>
-    [...new Set(logEntries.value.map((e) => e.categoryId).filter(Boolean))]
+    [...new Set(logEntries.value.map(e => e.categoryId).filter(Boolean))]
   )
 
   const filteredEntries = computed(() => {
@@ -163,16 +159,14 @@ export const useLogsEntriesStore = defineStore('logsEntries', () => {
     logsFetchError.value = null
     const dateParam = selectedDate.value.replace(/-/g, '')
     try {
-      const [sumRes, entriesRes] = await Promise.all([
-        fetch(`/api/logs/summary?date=${dateParam}`),
-        fetch(`/api/logs/entries?date=${dateParam}`),
+      const [sumData, entriesData] = await Promise.all([
+        fetchDailySummary(dateParam, apiBase.value),
+        fetchLogEntries(dateParam, apiBase.value),
       ])
-      const sumData = await sumRes.json()
-      const entriesData = await entriesRes.json()
       summary.value = sumData.total === 0 ? null : sumData
       logEntries.value = entriesData.entries ?? []
-    } catch (e: any) {
-      logsFetchError.value = e?.message ?? 'โหลดข้อมูลล้มเหลว'
+    } catch (e: unknown) {
+      logsFetchError.value = (e as Error)?.message ?? 'โหลดข้อมูลล้มเหลว'
       summary.value = null
       logEntries.value = []
     } finally {
@@ -180,19 +174,42 @@ export const useLogsEntriesStore = defineStore('logsEntries', () => {
     }
   }
 
-  async function openLogsDetail(item: any) {
+  async function openLogsDetail(item: LogEntry) {
     logsDetailEntry.value = item
     logsDetailItems.value = []
     logsDetailOpen.value = true
-    if (item.dataFile) {
+    if (item.screenshotFile && item.httpStatus === 200 && !item.error) {
       logsDetailItemsLoading.value = true
       try {
-        const res = await fetch(`/api/data?file=${item.dataFile}`)
-        const data = await res.json()
-        logsDetailItems.value = Array.isArray(data) ? data : [data]
+        const dateParam = selectedDate.value.replace(/-/g, '')
+        const data = await fetchResultByScreenshot(dateParam, item.screenshotFile, apiBase.value)
+        logsDetailItems.value = data.entry?.items ?? []
       } catch {}
       finally { logsDetailItemsLoading.value = false }
     }
+  }
+
+  async function openLogsDetailByScreenshot(screenshotFile: string) {
+    const dateParam = selectedDate.value.replace(/-/g, '')
+    if (!logEntries.value.length) {
+      try {
+        const data = await fetchLogEntries(dateParam, apiBase.value)
+        logEntries.value = data.entries ?? []
+      } catch {
+        return
+      }
+    }
+    let match = logEntries.value.find(e => e.screenshotFile === screenshotFile)
+    if (!match) {
+      try {
+        const data = await fetchLogEntries(dateParam, apiBase.value)
+        logEntries.value = data.entries ?? []
+        match = logEntries.value.find(e => e.screenshotFile === screenshotFile)
+      } catch {
+        return
+      }
+    }
+    if (match) await openLogsDetail(match)
   }
 
   function filterStatus(status: 'success' | 'failed') {
@@ -231,6 +248,6 @@ export const useLogsEntriesStore = defineStore('logsEntries', () => {
     sortedErrors, logsAvailableSources, logsAvailableCategories,
     filteredEntries, entryDomain,
     logsDetailOpen, logsDetailEntry, logsDetailItems, logsDetailItemsLoading,
-    fetchAll, openLogsDetail, filterStatus, filterSource, filterCategory,
+    fetchAll, openLogsDetail, openLogsDetailByScreenshot, filterStatus, filterSource, filterCategory,
   }
 })

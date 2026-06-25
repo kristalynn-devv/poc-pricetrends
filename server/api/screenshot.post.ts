@@ -3,39 +3,7 @@ import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
 import { takeScreenshot } from '../utils/browserUtils'
-
-const SOURCE_CODES: Record<string, string> = {
-  'chrono24.com': 'CHR',
-  'watchuseek.com': 'WUS',
-  'rolex.com': 'ROL',
-  'tarad.com': 'TAR',
-  'kaidee.com': 'KAI',
-  'shopee.co.th': 'SHP',
-  'lazada.co.th': 'LAZ',
-  'facebook.com': 'FBK',
-  'instagram.com': 'INS',
-  'ebay.com': 'EBY',
-  'yahoo.co.jp': 'YAH',
-  'mercari.com': 'MRC',
-}
-
-function sourceCode(url: string): string {
-  try {
-    const host = new URL(url).hostname.replace(/^www\./, '')
-    if (SOURCE_CODES[host]) return SOURCE_CODES[host]
-    // fallback: first 3 consonants/chars of domain
-    return host.split('.')[0].replace(/[aeiou]/gi, '').slice(0, 3).toUpperCase() || host.slice(0, 3).toUpperCase()
-  } catch {
-    return 'UNK'
-  }
-}
-
-function buildFilename(url: string, categoryId?: string): string {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const asset = categoryId ?? '000'
-  const src = sourceCode(url)
-  return `${date}_${asset}_${src}.jpg`
-}
+import { buildUrlScreenshotFilename } from '../utils/filename'
 
 export default defineEventHandler(async (event) => {
   const { url, categoryId, config: configRaw } = await readBody<{
@@ -84,7 +52,7 @@ export default defineEventHandler(async (event) => {
     await page.mouse.move(0, 0)
     await page.waitForTimeout(300)
     const buffer = await takeScreenshot(page, screenshotCfg)
-    const filename = buildFilename(url, categoryId)
+    const filename = buildUrlScreenshotFilename(url, categoryId)
     const screenshotDir = join(process.cwd(), 'output', 'screenshots')
     await mkdir(screenshotDir, { recursive: true })
     await writeFile(join(screenshotDir, filename), buffer)

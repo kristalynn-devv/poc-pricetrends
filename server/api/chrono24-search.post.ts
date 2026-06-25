@@ -1,12 +1,13 @@
 import type { ItemResult } from '../utils/routeHelpers'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { appendLog, saveItems, extractDomain } from '../utils/logger'
+import { appendLog, extractDomain } from '../utils/logger'
+import { persistExtraction } from '../utils/persistExtraction'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
-import { appendResult } from '../utils/resultsStore'
 import { dismissCookieBanner, createStealthContext, takeScreenshot, filterListingsByQuery, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
+import { buildScreenshotFilename } from '../utils/filename'
 
 const CHRONO24_BASE = 'https://www.chrono24.com'
 
@@ -18,10 +19,9 @@ const LISTING_LINK_SELECTORS = [
 ]
 
 function buildFilename(index: number, url: string): string {
-  const date = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)
   const idMatch = url.match(/--id(\d+)/)
   const articleId = idMatch ? idMatch[1] : `pos${String(index + 1).padStart(2, '0')}`
-  return `${date}_103_CHR_${articleId}.jpg`
+  return buildScreenshotFilename('103', 'CHR', articleId)
 }
 
 
@@ -144,7 +144,7 @@ export default defineEventHandler(async (event) => {
           result.error = `screenshot: ${msg}`
           emit('error', `[${i + 1}] Screenshot failed`, { msg })
           const isTimeout = msg.includes('timeout') || msg.includes('Timeout')
-          await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: isTimeout ? 504 : 500, screenshotFile: null, dataFile: null, error: msg, errorType: isTimeout ? 'timeout' : 'screenshot' }).catch(() => {})
+          await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: isTimeout ? 504 : 500, screenshotFile: null, error: msg, errorType: isTimeout ? 'timeout' : 'screenshot' }).catch(() => {})
           send((({ base64: _b, ...r }) => ({ type: 'result', ...r }))(result))
           return
         }
@@ -157,24 +157,22 @@ export default defineEventHandler(async (event) => {
             result.extractOk = true
             emit('info', `[${i + 1}] Extracted ${result.items.length} item(s)`)
             const ts = new Date().toISOString()
-            const dataFile = result.items.length > 0
-              ? await saveItems(result.items, categoryId, filename).catch(() => null)
-              : null
-            await Promise.all([
-              appendLog({ timestamp: ts, source: extractDomain(url), url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight }).catch(() => {}),
-              appendResult({ timestamp: ts, source: 'chrono24', url, categoryId, screenshotFile: filename, items: result.items as Record<string, any>[], roundId, searchQuery: query }).catch(() => {}),
-            ])
+            await persistExtraction({
+              timestamp: ts, source: extractDomain(url), url, categoryId, screenshotFile: filename,
+              items: result.items as Record<string, any>[], durationMs: Date.now() - itemStart,
+              searchQuery: query, roundId, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight,
+            }).catch(() => {})
           } catch {
             result.raw = text
             result.extractOk = false
             emit('warn', `[${i + 1}] Gemini response not valid JSON`, { preview: text.slice(0, 120) })
-            await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile: null, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse' }).catch(() => {})
+            await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse' }).catch(() => {})
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           result.error = (result.error ?? '') + `extract: ${msg}`
           emit('error', `[${i + 1}] Gemini failed`, { msg })
-          await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 502, screenshotFile: filename, dataFile: null, error: msg, errorType: 'extraction' }).catch(() => {})
+          await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 502, screenshotFile: filename, error: msg, errorType: 'extraction' }).catch(() => {})
         }
 
         send((({ base64: _b, ...r }) => ({ type: 'result', ...r }))(result))

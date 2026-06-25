@@ -1,43 +1,11 @@
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
+import type { DailySummary, LogEntry } from '#shared/types/log'
+import { extractDomain } from '#shared/utils/domain'
 
-export interface LogEntry {
-  timestamp: string
-  source: string
-  url: string
-  categoryId: string | null
-  searchQuery?: string
-  roundId?: string
-  durationMs: number
-  httpStatus: number
-  screenshotFile: string | null
-  dataFile: string | null
-  error: string | null
-  errorType: 'timeout' | 'screenshot' | 'extraction' | 'parse' | 'config' | null
-  geminiInputTokens?: number
-  geminiOutputTokens?: number
-  imageWidth?: number
-  imageHeight?: number
-}
-
-export async function saveItems(
-  items: unknown[],
-  categoryId: string,
-  screenshotFile: string,
-): Promise<string> {
-  const date = screenshotFile.slice(0, 8)
-  const dir = join(process.cwd(), 'output', 'data', date, categoryId)
-  await mkdir(dir, { recursive: true })
-  const name = screenshotFile.replace(/\.jpg$/i, '.json')
-  const filePath = join(dir, name)
-  await writeFile(filePath, JSON.stringify(items, null, 2), 'utf8')
-  return `${date}/${categoryId}/${name}`
-}
-
-export function extractDomain(url: string): string {
-  try { return new URL(url).hostname.replace(/^www\./, '').split('.')[0] } catch { return url }
-}
+export type { DailySummary, LogEntry } from '#shared/types/log'
+export { extractDomain }
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10).replace(/-/g, '')
@@ -51,19 +19,6 @@ export async function appendLog(entry: LogEntry): Promise<void> {
   const dir = join(process.cwd(), 'output', 'logs')
   await mkdir(dir, { recursive: true })
   await appendFile(logPath(), JSON.stringify(entry) + '\n', 'utf8')
-}
-
-export interface DailySummary {
-  date: string
-  total: number
-  success: number
-  failed: number
-  avgDurationMs: number
-  totalInputTokens: number
-  totalOutputTokens: number
-  errors: Array<{ timestamp: string; url: string; source: string; searchQuery?: string; errorType: string | null; error: string }>
-  bySource: Record<string, { total: number; success: number; failed: number }>
-  byCategory: Record<string, { total: number; success: number }>
 }
 
 export async function readDailySummary(dateStr?: string): Promise<DailySummary> {
@@ -118,7 +73,6 @@ export async function readDailySummary(dateStr?: string): Promise<DailySummary> 
     summary.bySource[src].total++
     ok ? summary.bySource[src].success++ : summary.bySource[src].failed++
 
-    // by category
     const cat = e.categoryId ?? 'unknown'
     summary.byCategory[cat] ??= { total: 0, success: 0 }
     summary.byCategory[cat].total++

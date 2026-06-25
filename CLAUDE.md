@@ -31,7 +31,8 @@ pnpm preview
 - `server/api/screenshot.post.ts` — standalone screenshot → `{ base64, mimeType, filename }`
 - `server/api/extract.post.ts` — standalone Gemini extraction → `{ items[] }`
 - `GET /api/screenshot?file=` — serve screenshot image from `output/screenshots/`
-- `GET /api/data?file=` — serve saved result JSON from `output/data/`
+- `GET /api/results/entries?date=YYYYMMDD` — daily extracted results (`output/results/`)
+- `GET /api/results/entries?date=YYYYMMDD&screenshotFile=` — single result by screenshot filename
 - `GET /api/logs/entries?date=YYYYMMDD` — raw JSONL log entries for a given day
 - `GET /api/logs/summary?date=YYYYMMDD` — daily summary (total/success/failed, bySource, byCategory, avgDuration)
 
@@ -71,11 +72,13 @@ Source list ทั้งหมดนิยามใน `index.vue` (`categoryGro
   - stealth browser → `createStealthContext()` จาก `browserUtils.ts`
   - ปิด cookie popup → `dismissCookieBanner()` จาก `browserUtils.ts`
   - scroll lazy content → `scrollForLazyContent()` จาก `browserUtils.ts`
-  - screenshot options/viewport → `mergeScreenshotConfig()` + `buildScreenshotOptions()` จาก `screenshotConfig.ts`
-  - ถ่าย screenshot → `takeScreenshot()` จาก `browserUtils.ts`
-  - สร้าง Gemini prompt → `buildExtractPrompt()` + `buildSchema()` จาก `extractPrompt.ts`
-  - บันทึก result → `appendResult()` จาก `resultsStore.ts`
-  - บันทึก log → `appendLog()` จาก `logger.ts`
+ - screenshot options/viewport → `mergeScreenshotConfig()` + `buildScreenshotOptions()` จาก `screenshotConfig.ts`
+ - ถ่าย screenshot → `takeScreenshot()` จาก `browserUtils.ts`
+ - สร้างชื่อไฟล์ screenshot → `buildScreenshotFilename()` / `buildUrlScreenshotFilename()` จาก `filename.ts`
+ - สร้าง Gemini prompt → `buildExtractPrompt()` + `buildSchema()` จาก `extractPrompt.ts`
+  - บันทึก result → `persistExtraction()` จาก `persistExtraction.ts` (เขียน `results/` + `logs/` พร้อมกัน)
+  - บันทึก log อย่างเดียว (error cases) → `appendLog()` จาก `logger.ts`
+  - API types/constants → import จาก `#shared` (ไม่ duplicate ใน server/utils)
   - coerce price → `sanitizeItems()` จาก `sanitize.ts`
 - **ถ้า logic ซ้ำกัน 2+ route ให้ย้ายไป `server/utils/`** ก่อนแล้วค่อย import
 - **field definitions** มี 2 ที่ ใช้ให้ถูก:
@@ -91,6 +94,12 @@ Source list ทั้งหมดนิยามใน `index.vue` (`categoryGro
 - Cookie popup: auto-dismiss (`Accept all`, `Agree`, `OK` ใน dialog)
 - `waitUntil: 'load'` + 3s wait (ไม่ใช้ `networkidle` — timeout บนเว็บที่มี background requests)
 
+**Filename utilities** (`server/utils/filename.ts`):
+- `fileTimestampPrefix()` — `YYYYMMDD_HHmmss` (UTC)
+- `buildScreenshotFilename(...parts)` — `YYYYMMDD_HHmmss_{parts}.jpg`
+- `buildUrlScreenshotFilename(url, categoryId?)` — สำหรับ analyze/screenshot route
+- `sourceCode(url)` — map domain → 3-letter source code
+
 **Browser utilities** (`server/utils/browserUtils.ts`):
 - `createStealthContext()` — สร้าง BrowserContext พร้อม stealth + viewport จาก screenshotConfig (รองรับ locale th-TH/en-US)
 - `dismissCookieBanner()` — ปิด popup อัตโนมัติ (shared selectors ทุก route ใช้ร่วมกัน)
@@ -103,12 +112,18 @@ Source list ทั้งหมดนิยามใน `index.vue` (`categoryGro
 - `CATEGORY_FIELDS` — field list ต่อ category (export ใช้ใน route ได้)
 - `getCategoryLabel()` — ชื่อหมวดหมู่ภาษาไทยต่อ categoryId
 
+**Data storage** (ไม่ซ้ำซ้อน — แต่ละโฟลเดอร์มีหน้าที่เดียว):
+- `output/screenshots/` — รูป JPG
+- `output/results/YYYYMMDD.jsonl` — **แหล่งเดียว** ของข้อมูลสินค้าที่ extract ได้ (1 entry ต่อ screenshot)
+- `output/logs/YYYYMMDD.jsonl` — operational log (duration, error, tokens, `screenshotFile` pointer)
+
 **Data utilities:**
 - `server/utils/sanitize.ts` — `sanitizeItems()`: coerce price เป็น integer, strip commas
+- `server/utils/persistExtraction.ts` — `persistExtraction()`: บันทึก `appendResult` + `appendLog` success ในครั้งเดียว
 - `server/utils/resultsStore.ts` — `appendResult()` / `readDailyResults()`: เขียน/อ่าน `output/results/YYYYMMDD.jsonl`
   - `ResultEntry` มี `roundId?` (batch run ID) และ `searchQuery?` สำหรับ group ผลลัพธ์
 
-**File naming convention:** `[YYYYMMDD]_[CategoryID]_[SourceCode].jpg`
+**File naming convention:** `[YYYYMMDD]_[HHmmss]_[CategoryID]_[SourceCode][_{suffix}].jpg`
 - บันทึกที่ `output/screenshots/`
 - Source codes: `CHR`=chrono24, `SHP`=shopee, `LAZ`=lazada, `KAI`=kaidee, `FBK`=facebook, `MRC`=mercari, `EBY`=ebay, `YAH`=yahoo — domain อื่นใช้ 3 ตัวแรกของ domain อัตโนมัติ
 
@@ -128,22 +143,57 @@ UI ให้ผู้ใช้เพิ่ม optional fields ได้ด้ว
 
 `price` = ตัวเลขเท่านั้น, `currency` = สกุลเงิน (THB/USD/JPY/EUR) แยกกัน
 
-**Credentials**: `NUXT_GEMINI_API_KEY` ใน `.env` (ไม่ใช่ `GEMINI_API_KEY`) — Nuxt runtimeConfig map จาก prefix `NUXT_` เท่านั้น
+**Credentials & split config:**
+- `NUXT_GEMINI_API_KEY` ใน `.env` (server-only) — Gemini API key
+- `NUXT_PUBLIC_API_BASE` ใน `.env` (optional) — backend URL เมื่อแยก frontend; ว่าง = same-origin `/api`
+- ดู `.env.example` สำหรับ template
+
+**Split-ready architecture** (แยก backend/frontend ในอนาคต):
+
+```
+shared/              # API contract — types, paths, constants (import ได้ทั้ง app + server)
+  types/             # LogEntry, ResultEntry, ItemResult, StreamEvent, ScreenshotConfig
+  constants/         # CATEGORY_NAMES, SEARCH_ROUTES, SEARCH_ROUTE_CATEGORY
+  api/paths.ts       # API_PATHS, screenshotPath(), withQuery()
+app/lib/api/         # HTTP client — ทุก fetch ผ่านที่นี่ ไม่ hardcode /api ใน store/page
+  client.ts          # apiUrl(), apiFetch(), apiJson() + apiBase param
+  results.ts, logs.ts, screenshots.ts, search.ts
+app/composables/useApi.ts  # อ่าน NUXT_PUBLIC_API_BASE จาก runtimeConfig
+server/              # Nitro backend — import types จาก #shared, ไม่ import จาก app/
+```
+
+เมื่อแยกจริง:
+1. ย้าย `shared/` → `packages/shared` (pnpm workspace)
+2. ย้าย `server/` → `apps/api` (Nitro standalone)
+3. ย้าย `app/` → `apps/web` (Nuxt SPA)
+4. ตั้ง `NUXT_PUBLIC_API_BASE` ชี้ไป backend tunnel
+5. Backend เปิด CORS แล้ว (nitro `routeRules: { '/api/**': { cors: true } }`)
+
+**Deploy frontend ขึ้น Cloudflare Pages** (backend รันที่เครื่องตัวเอง):
+- Build script: `pnpm build:pages` (static preset, ไม่ติดตั้ง Playwright)
+- Output: `.output/public/`
+- SPA fallback: `public/_redirects`
+- ตั้ง env บน Cloudflare Dashboard: `NUXT_PUBLIC_API_BASE=https://your-tunnel-url`
+- Deploy CLI: `pnpm pages:deploy` (ต้อง `wrangler login` ก่อน)
+- หรือเชื่อม Git → Build command: `pnpm build:pages`, Output: `.output/public`
+- `CF_PAGES=1` ตอน build บน Cloudflare จะ skip Playwright อัตโนมัติ
+
+**Frontend API layer** — Pinia stores เรียก `~/lib/api/*` ไม่เรียก `fetch('/api/...')` โดยตรง
 
 **Logging system** (`server/utils/logger.ts`):
 - ทุก request append `LogEntry` ไปที่ `output/logs/YYYYMMDD.jsonl`
-- Fields: `timestamp`, `source`, `url`, `categoryId`, `searchQuery?`, `durationMs`, `httpStatus`, `screenshotFile`, `dataFile`, `error`, `errorType`
-- `dataFile` — path ของ result JSON ที่บันทึกไว้ (ใช้ใน logs UI เพื่อ fetch extracted items)
+- Fields: `timestamp`, `source`, `url`, `categoryId`, `searchQuery?`, `roundId?`, `durationMs`, `httpStatus`, `screenshotFile`, `error`, `errorType`, `geminiInputTokens?`, `geminiOutputTokens?`, `imageWidth?`, `imageHeight?`
+- `screenshotFile` — join key ไปหา extracted items ใน `output/results/` (ผ่าน `/api/results/entries?screenshotFile=`)
 - `errorType`: `timeout` | `screenshot` | `extraction` | `parse` | `config`
-- UI ดู log ได้ที่ `/logs` (`app/pages/logs.vue`) — กรองตามวัน แสดง summary + error list + ดู extracted items ใน detail dialog
+- UI ดู log ได้ที่ `/logs` — กรองตามวัน แสดง summary + error list + ดู extracted items ใน detail dialog (ดึงจาก results โดย `screenshotFile`)
 
-**Frontend components/composables ใหม่:**
+**Frontend components/composables:**
 - `app/components/ScreenshotImg.vue` — แสดงภาพ screenshot พร้อม lightbox (thumbnail + full preview)
 - `app/composables/useCategoryFields.ts` — ข้อมูล required/optional fields ต่อ category (Nuxt auto-import)
   - `getFieldOrder(categoryId)` — คืน canonical column order: required → price → currency → optional
   - ใช้ใน `index.vue` (srcHeaders, detailHeaders) และ `entries.vue` (getColumns) เพื่อให้ลำดับ column เหมือนกันทุก source ในหมวดเดียวกัน อย่า sort ด้วย `Object.keys()` ดิบ
-  - `getFieldOrder(categoryId)` — คืน canonical column order: required → price → currency → optional
-  - ใช้ใน `index.vue` (srcHeaders, detailHeaders) และ `entries.vue` (getColumns) เพื่อให้ลำดับ column เหมือนกันทุก source ในหมวดเดียวกัน อย่า sort ด้วย `Object.keys()` ดิบ
+- `app/composables/useApi.ts` — API client wrapper อ่าน `NUXT_PUBLIC_API_BASE`
+- `app/lib/api/` — HTTP functions แยกตาม domain (results, logs, search, screenshots)
 
 ## Known gaps
 

@@ -1,3 +1,5 @@
+import { CATEGORY_ALIAS } from '#shared/constants/categories'
+
 export interface FieldDef { key: string; label: string }
 
 // price + currency are common to all categories
@@ -51,20 +53,17 @@ const CATEGORY_FIELDS: Record<string, { required: FieldDef[]; optional: FieldDef
   },
 }
 
-// categories sharing the same field definition
-const CATEGORY_ALIAS: Record<string, string> = {
-  '109': '107',
-  '112': '107',
-  '110': '108',
+export function getCategoryFieldDefs(categoryId: string) {
+  const id = CATEGORY_ALIAS[categoryId] ?? categoryId
+  return CATEGORY_FIELDS[id] ?? {
+    required: [{ key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }],
+    optional: [],
+  }
 }
 
 export function useCategoryFields() {
   function getFields(categoryId: string) {
-    const id = CATEGORY_ALIAS[categoryId] ?? categoryId
-    return CATEGORY_FIELDS[id] ?? {
-      required: [{ key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }],
-      optional: [],
-    }
+    return getCategoryFieldDefs(categoryId)
   }
 
   function getAllowedKeys(categoryId: string): Set<string> {

@@ -1,14 +1,6 @@
-export interface ItemResult {
-  index: number
-  url: string
-  filename: string | null
-  base64: string | null
-  screenshotOk: boolean
-  extractOk: boolean
-  items: unknown[]
-  raw?: string
-  error?: string
-}
+import type { ItemResult } from '#shared/types/item'
+
+export type { ItemResult } from '#shared/types/item'
 
 export function createStreamEmitter(siteName: string) {
   const encoder = new TextEncoder()

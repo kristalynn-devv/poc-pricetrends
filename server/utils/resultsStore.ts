@@ -1,17 +1,9 @@
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
+import type { ResultEntry } from '#shared/types/result'
 
-export interface ResultEntry {
-  timestamp: string
-  source: string
-  url: string
-  categoryId: string | null
-  screenshotFile: string | null
-  items: Record<string, any>[]
-  roundId?: string
-  searchQuery?: string
-}
+export type { ResultEntry } from '#shared/types/result'
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10).replace(/-/g, '')

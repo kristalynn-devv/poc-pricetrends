@@ -1,21 +1,15 @@
 import { defineStore } from 'pinia'
 import type { FieldDef } from '~/composables/useCategoryFields'
+import { getCategoryFieldDefs } from '~/composables/useCategoryFields'
+import type { ItemResult, BatchSummary } from '#shared/types/item'
+import { SEARCH_ROUTE_CATEGORY, SEARCH_ROUTES } from '#shared/constants/searchRoutes'
+import { streamBatchSearch } from '~/lib/api/search'
+import { screenshotUrl } from '~/lib/api/screenshots'
 
-export interface ItemResult {
-  index: number
-  url: string
-  filename: string | null
-  base64: string | null
-  screenshotOk: boolean
-  extractOk: boolean
-  items: Record<string, unknown>[]
-  error?: string
-  raw?: string
-  _query?: string
-}
+export type { ItemResult }
+export type Summary = BatchSummary
 
 export interface LogLine { ts: string; level: string; msg: string; data?: unknown }
-export interface Summary { total: number; screenshotOk: number; extractOk: number }
 
 export interface SourceRun {
   loading: boolean
@@ -49,85 +43,14 @@ export interface CategoryGroup {
   lastRoundId?: string
 }
 
-const CATEGORY_FIELDS: Record<string, { required: FieldDef[]; optional: FieldDef[] }> = {
-  '103': {
-    required: [{ key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }],
-    optional: [
-      { key: 'dialColor', label: 'สีหน้าปัด' },
-      { key: 'caseMaterial', label: 'วัสดุตัวเรือน' },
-      { key: 'strapMaterial', label: 'วัสดุสายนาฬิกา' },
-      { key: 'movementType', label: 'ระบบ' },
-      { key: 'condition', label: 'สภาพ' },
-    ],
-  },
-  '106': {
-    required: [{ key: 'title', label: 'ชื่อ/ยี่ห้อ' }, { key: 'material', label: 'วัสดุ' }],
-    optional: [
-      { key: 'moldType', label: 'พิมพ์' },
-      { key: 'year', label: 'ปี' },
-      { key: 'weight', label: 'น้ำหนัก' },
-    ],
-  },
-  '107': {
-    required: [{ key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }],
-    optional: [
-      { key: 'itemType', label: 'ประเภท' },
-      { key: 'capacity', label: 'ความจุ/สเปก' },
-      { key: 'condition', label: 'สภาพ' },
-    ],
-  },
-  '108': {
-    required: [{ key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }],
-    optional: [
-      { key: 'itemType', label: 'ประเภท' },
-      { key: 'condition', label: 'สภาพ' },
-      { key: 'year', label: 'ปี' },
-    ],
-  },
-  '111': {
-    required: [{ key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }],
-    optional: [
-      { key: 'itemType', label: 'ประเภท' },
-      { key: 'condition', label: 'สภาพ' },
-    ],
-  },
-}
-
-const API_CATEGORY_MAP: Record<string, string> = {
-  '/api/chrono24-search': '103',
-  '/api/auctionhouse-search': '103',
-  '/api/radiumwatch-search': '103',
-  '/api/siamwatchclub-search': '103',
-  '/api/komehyo-search': '103',
-  '/api/thaprachan-search': '106',
-  '/api/wutdychonburi-search': '106',
-  '/api/prapantip-search': '106',
-  '/api/uauction-search': '106',
-  '/api/shopbkk-search': '107',
-  '/api/compasia-search': '107',
-  '/api/kaidee-search': '107',
-  '/api/sasom-search': '108',
-  '/api/moppet-search': '108',
-  '/api/sfbrandname-search': '108',
-  '/api/brandnamevoyage-search': '108',
-  '/api/truck2hand-search': '111',
-}
-
 function makeRun(): SourceRun {
   return { loading: false, done: false, results: [], logs: [], summary: null, error: '', searchPageScreenshot: '' }
-}
-
-function getFields(ids: string[]) {
-  return CATEGORY_FIELDS[ids[0]] ?? {
-    required: [{ key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }],
-    optional: [],
-  }
 }
 
 function buildGroup(label: string, ids: string[], sources: SourceDef[]): CategoryGroup {
   const enabled: Record<string, boolean> = {}
   sources.forEach((s) => { enabled[s.name] = false })
-  const { required, optional } = getFields(ids)
+  const { required, optional } = getCategoryFieldDefs(ids[0])
   return {
     label, ids, sources, queries: [], newQuery: '', running: false, enabled, runs: {},
     requiredFields: required, optionalFields: optional, fieldValues: {}, activeOptionals: [],
@@ -135,6 +58,8 @@ function buildGroup(label: string, ids: string[], sources: SourceDef[]): Categor
 }
 
 export const useSearchGroupsStore = defineStore('searchGroups', () => {
+  const config = useRuntimeConfig()
+  const apiBase = computed(() => (config.public.apiBase as string) || '')
   const groups = ref<CategoryGroup[]>([])
 
   function init() {
@@ -142,37 +67,37 @@ export const useSearchGroupsStore = defineStore('searchGroups', () => {
     groups.value = [
       buildGroup('นาฬิกา', ['103'], [
         { name: 'StarBuyers Global Auction', url: 'https://www.starbuyers-global-auction.com/login' },
-        { name: 'Chrono24', url: 'https://www.chrono24.com', apiRoute: '/api/chrono24-search' },
-        { name: 'Auction House', url: 'https://www.auctionhouse.co.th', apiRoute: '/api/auctionhouse-search' },
-        { name: 'Radium Watch', url: 'https://radiumwatch.com', apiRoute: '/api/radiumwatch-search' },
-        { name: 'Siam Watch Club', url: 'https://www.siamwatchclub.com', apiRoute: '/api/siamwatchclub-search' },
-        { name: 'Komehyo (นาฬิกา)', url: 'https://www.komehyo.co.th', apiRoute: '/api/komehyo-search' },
+        { name: 'Chrono24', url: 'https://www.chrono24.com', apiRoute: SEARCH_ROUTES.chrono24 },
+        { name: 'Auction House', url: 'https://www.auctionhouse.co.th', apiRoute: SEARCH_ROUTES.auctionhouse },
+        { name: 'Radium Watch', url: 'https://radiumwatch.com', apiRoute: SEARCH_ROUTES.radiumwatch },
+        { name: 'Siam Watch Club', url: 'https://www.siamwatchclub.com', apiRoute: SEARCH_ROUTES.siamwatchclub },
+        { name: 'Komehyo (นาฬิกา)', url: 'https://www.komehyo.co.th', apiRoute: SEARCH_ROUTES.komehyo },
       ]),
       buildGroup('พระ / วัตถุมงคล', ['106'], [
-        { name: 'Thaprachan', url: 'https://www.thaprachan.com/', apiRoute: '/api/thaprachan-search' },
-        { name: 'Wutdychonburi', url: 'https://wutdychonburi.com/', apiRoute: '/api/wutdychonburi-search' },
-        { name: 'Prapantip', url: 'https://www.prapantip.com/amulet/', apiRoute: '/api/prapantip-search' },
+        { name: 'Thaprachan', url: 'https://www.thaprachan.com/', apiRoute: SEARCH_ROUTES.thaprachan },
+        { name: 'Wutdychonburi', url: 'https://wutdychonburi.com/', apiRoute: SEARCH_ROUTES.wutdychonburi },
+        { name: 'Prapantip', url: 'https://www.prapantip.com/amulet/', apiRoute: SEARCH_ROUTES.prapantip },
         { name: 'G-Pra', url: 'https://www.g-pra.com/' },
-        { name: 'UAmulet', url: 'https://uauction.uamulet.com/AuctionUClubTopList.aspx', apiRoute: '/api/uauction-search' },
+        { name: 'UAmulet', url: 'https://uauction.uamulet.com/AuctionUClubTopList.aspx', apiRoute: SEARCH_ROUTES.uauction },
       ]),
       buildGroup('สินค้าไอที / โน้ตบุ๊ก / สมาร์ทโฟน', ['107', '109', '112'], [
-        { name: 'ShopBKK', url: 'https://www.shopbkk.com', apiRoute: '/api/shopbkk-search' },
-        { name: 'CompAsia', url: 'https://compasia.co.th', apiRoute: '/api/compasia-search' },
-        { name: 'Kaidee', url: 'https://www.kaidee.com', apiRoute: '/api/kaidee-search' },
+        { name: 'ShopBKK', url: 'https://www.shopbkk.com', apiRoute: SEARCH_ROUTES.shopbkk },
+        { name: 'CompAsia', url: 'https://compasia.co.th', apiRoute: SEARCH_ROUTES.compasia },
+        { name: 'Kaidee', url: 'https://www.kaidee.com', apiRoute: SEARCH_ROUTES.kaidee },
         { name: 'Pantipmarket (Mobile)', url: 'https://www.pantipmarket.com' },
         { name: '108 Accessory', url: 'http://www.108accessory.com/' },
       ]),
       buildGroup('แบรนเนม / แว่นตา', ['108', '110'], [
-        { name: 'Komehyo', url: 'https://www.komehyo.co.th/', apiRoute: '/api/komehyo-search' },
-        { name: 'Sasom', url: 'https://sasom.co.th/th', apiRoute: '/api/sasom-search' },
-        { name: 'Moppet Brandname', url: 'https://www.moppetbrandname.com/', apiRoute: '/api/moppet-search' },
-        { name: 'SF Brandname', url: 'https://sfbrandname.com/', apiRoute: '/api/sfbrandname-search' },
-        { name: 'Brandname Voyage', url: 'https://brandnamevoyage.com/', apiRoute: '/api/brandnamevoyage-search' },
+        { name: 'Komehyo', url: 'https://www.komehyo.co.th/', apiRoute: SEARCH_ROUTES.komehyo },
+        { name: 'Sasom', url: 'https://sasom.co.th/th', apiRoute: SEARCH_ROUTES.sasom },
+        { name: 'Moppet Brandname', url: 'https://www.moppetbrandname.com/', apiRoute: SEARCH_ROUTES.moppet },
+        { name: 'SF Brandname', url: 'https://sfbrandname.com/', apiRoute: SEARCH_ROUTES.sfbrandname },
+        { name: 'Brandname Voyage', url: 'https://brandnamevoyage.com/', apiRoute: SEARCH_ROUTES.brandnamevoyage },
       ]),
       buildGroup('เครื่องมือช่าง', ['111'], [
-        { name: 'Kaidee (เครื่องมือช่าง)', url: 'https://www.kaidee.com/c296-appliances_decoration-accessories_and_tool_suppliers', apiRoute: '/api/kaidee-search' },
+        { name: 'Kaidee (เครื่องมือช่าง)', url: 'https://www.kaidee.com/c296-appliances_decoration-accessories_and_tool_suppliers', apiRoute: SEARCH_ROUTES.kaidee },
         { name: 'Shopee (เครื่องมือช่าง)', url: 'https://shopee.co.th/search?keyword=%E0%B9%80%E0%B8%84%E0%B8%A3%E0%B8%B7%E0%B9%88%E0%B8%AD%E0%B8%87%E0%B9%80%E0%B8%9B%E0%B9%88%E0%B8%B2%E0%B8%A5%E0%B8%A1' },
-        { name: 'Truck2Hand', url: 'https://www.truck2hand.com/category/cat_equipment/', apiRoute: '/api/truck2hand-search' },
+        { name: 'Truck2Hand', url: 'https://www.truck2hand.com/category/cat_equipment/', apiRoute: SEARCH_ROUTES.truck2hand },
         { name: 'Facebook กลุ่ม 1', url: 'https://www.facebook.com/groups/198988708155849/' },
         { name: 'Facebook กลุ่ม 2', url: 'https://www.facebook.com/groups/4392804640788959/' },
         { name: 'Facebook กลุ่ม 3', url: 'https://www.facebook.com/groups/455495127955260/' },
@@ -215,7 +140,7 @@ export const useSearchGroupsStore = defineStore('searchGroups', () => {
     const multiQuery = grp.queries.length > 1
     return run.results.flatMap(r => {
       const base = {
-        _screenshot: r.filename ? `/api/screenshot?file=${r.filename}` : '',
+        _screenshot: r.filename ? screenshotUrl(r.filename, apiBase.value) : '',
         ...(multiQuery ? { _query: r._query ?? '' } : {}),
         _source: r.filename ?? r.url,
       }
@@ -234,51 +159,36 @@ export const useSearchGroupsStore = defineStore('searchGroups', () => {
     roundId?: string,
   ) {
     const run = grp.runs[src.name]
-    const categoryId = API_CATEGORY_MAP[src.apiRoute!] ?? grp.ids[0]
+    const categoryId = (src.apiRoute && SEARCH_ROUTE_CATEGORY[src.apiRoute as keyof typeof SEARCH_ROUTE_CATEGORY])
+      ?? grp.ids[0]
     const prefix = grp.queries.length > 1 ? `[${qi + 1}/${grp.queries.length}] ` : ''
 
     run.logs.push({ ts: new Date().toISOString(), level: 'info', msg: `${prefix}ค้นหา: ${query}` })
 
     try {
-      const res = await fetch(src.apiRoute!, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, categoryId, limit: Number(cfg.limit) || 1, config: cfg, roundId }),
-
-        signal: AbortSignal.timeout(300_000),
-      })
-      if (!res.body) throw new Error('No response stream')
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            const ev = JSON.parse(line)
-            if (ev.type === 'log') {
-              run.logs.push({ ...ev, msg: prefix + ev.msg })
-            } else if (ev.type === 'result') {
-              run.results.push({ ...ev, _query: query })
-            } else if (ev.type === 'searchpage') {
-              run.searchPageScreenshot = ev.base64
-            } else if (ev.type === 'done') {
-              const s = ev.summary as Summary
-              if (!run.summary) {
-                run.summary = { ...s }
-              } else {
-                run.summary.total += s.total
-                run.summary.screenshotOk += s.screenshotOk
-                run.summary.extractOk += s.extractOk
-              }
-              if (ev.error) run.error = (run.error ? run.error + ' | ' : '') + `${query}: ${ev.error}`
-            }
-          } catch {}
+      for await (const ev of streamBatchSearch(
+        src.apiRoute!,
+        { query, categoryId, limit: Number(cfg.limit) || 1, config: cfg, roundId },
+        apiBase.value,
+      )) {
+        if (ev.type === 'log') {
+          run.logs.push({ ts: ev.ts, level: ev.level, msg: prefix + ev.msg, data: ev.data })
+        } else if (ev.type === 'result') {
+          const { type: _t, ...result } = ev
+          run.results.push({ ...result, _query: query } as ItemResult & { _query?: string })
+        } else if (ev.type === 'searchpage') {
+          run.searchPageScreenshot = ev.base64
+        } else if (ev.type === 'done') {
+          const s = ev.summary
+          if (!s) continue
+          if (!run.summary) {
+            run.summary = { ...s }
+          } else {
+            run.summary.total += s.total
+            run.summary.screenshotOk += s.screenshotOk
+            run.summary.extractOk += s.extractOk
+          }
+          if (ev.error) run.error = (run.error ? run.error + ' | ' : '') + `${query}: ${ev.error}`
         }
       }
     } catch (e: unknown) {

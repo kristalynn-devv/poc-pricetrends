@@ -3,12 +3,13 @@ import { chromium } from 'playwright'
 import type { ItemResult } from '../utils/routeHelpers'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { appendLog, saveItems } from '../utils/logger'
+import { appendLog } from '../utils/logger'
+import { persistExtraction } from '../utils/persistExtraction'
 import { mergeScreenshotConfig, type ScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
-import { appendResult } from '../utils/resultsStore'
 import { dismissCookieBanner, createStealthContext, applyStealthScripts, takeScreenshot, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
+import { buildScreenshotFilename } from '../utils/filename'
 
 const AH_BASE = 'https://www.auctionhouse.co.th'
 
@@ -22,10 +23,9 @@ const LISTING_LINK_SELECTORS = [
 ]
 
 function buildFilename(index: number, categoryId: string, url: string): string {
-  const date = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)
   const slugMatch = url.match(/\/([^/]+)\.html/)
   const slug = slugMatch ? slugMatch[1].slice(0, 30) : String(index + 1).padStart(2, '0')
-  return `${date}_${categoryId}_AUC_${slug}.jpg`
+  return buildScreenshotFilename(categoryId, 'AUC', slug)
 }
 
 
@@ -238,7 +238,7 @@ export default defineEventHandler(async (event) => {
             const buf = await takeScreenshot(page, screenshotCfg)
             const b64 = buf.toString('base64')
             await mkdir(screenshotDir, { recursive: true })
-            const fname = `${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)}_${categoryId}_AUC_searchpage.jpg`
+            const fname = buildScreenshotFilename(categoryId, 'AUC', 'searchpage')
             await writeFile(join(screenshotDir, fname), buf)
             send({ type: 'searchpage', base64: b64 })
             send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No listing URLs found — bot protection may be active' })
@@ -302,12 +302,12 @@ export default defineEventHandler(async (event) => {
               emit('warn', `[${i + 1}] Gemini response not valid JSON`, { preview: text.slice(0, 120) })
             }
 
-            const dataFile = result.items.length > 0 ? await saveItems(result.items, categoryId, filename).catch(() => null) : null
             const ts = new Date().toISOString()
-            await Promise.all([
-              appendLog({ timestamp: ts, source: 'auctionhouse', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, dataFile, error: null, errorType: null, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight }).catch(() => {}),
-              appendResult({ timestamp: ts, source: 'auctionhouse', url, categoryId, screenshotFile: filename, items: result.items as Record<string, any>[], roundId, searchQuery: query }).catch(() => {}),
-            ])
+await persistExtraction({
+  timestamp: ts, source: 'auctionhouse', url, categoryId, screenshotFile: filename,
+  items: result.items as Record<string, any>[], durationMs: Date.now() - itemStart,
+  searchQuery: query, roundId, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight,
+}).catch(() => {})
           } finally {
             await page.close()
           }

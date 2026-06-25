@@ -2,46 +2,14 @@ import { chromium } from 'playwright'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { appendLog, saveItems, extractDomain } from '../utils/logger'
+import { appendLog, extractDomain } from '../utils/logger'
+import { persistExtraction } from '../utils/persistExtraction'
 import type { LogEntry } from '../utils/logger'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
 import type { ScreenshotConfig } from '../utils/screenshotConfig'
 import { takeScreenshot } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
-
-
-const SOURCE_CODES: Record<string, string> = {
-  'chrono24.com': 'CHR',
-  'watchuseek.com': 'WUS',
-  'rolex.com': 'ROL',
-  'tarad.com': 'TAR',
-  'kaidee.com': 'KAI',
-  'shopee.co.th': 'SHP',
-  'lazada.co.th': 'LAZ',
-  'facebook.com': 'FBK',
-  'instagram.com': 'INS',
-  'ebay.com': 'EBY',
-  'yahoo.co.jp': 'YAH',
-  'mercari.com': 'MRC',
-  'auctionhouse.co.th': 'AUC',
-}
-
-function sourceCode(url: string): string {
-  try {
-    const host = new URL(url).hostname.replace(/^www\./, '')
-    if (SOURCE_CODES[host]) return SOURCE_CODES[host]
-    return host.split('.')[0].replace(/[aeiou]/gi, '').slice(0, 3).toUpperCase() || host.slice(0, 3).toUpperCase()
-  } catch {
-    return 'UNK'
-  }
-}
-
-function buildFilename(url: string, categoryId?: string): string {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const asset = categoryId ?? '000'
-  const src = sourceCode(url)
-  return `${date}_${asset}_${src}.jpg`
-}
+import { buildUrlScreenshotFilename } from '../utils/filename'
 
 const CATEGORY_FIELDS: Record<string, string[]> = {
   '103': ['brand', 'model', 'price', 'currency', 'condition', 'dialColor', 'caseMaterial', 'strapMaterial', 'movementType'],
@@ -90,14 +58,14 @@ export default defineEventHandler(async (event) => {
     const logEntry: LogEntry = {
       timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
       durationMs: 0, httpStatus: 500, screenshotFile: null,
-      dataFile: null, error: 'GEMINI_API_KEY not configured', errorType: 'config',
+      error: 'GEMINI_API_KEY not configured', errorType: 'config',
     }
     await appendLog(logEntry).catch(() => {})
     throw createError({ statusCode: 500, message: 'GEMINI_API_KEY not configured' })
   }
 
   const startedAt = Date.now()
-  const filename = buildFilename(url, categoryId)
+  const filename = buildUrlScreenshotFilename(url, categoryId)
   const mimeType = 'image/jpeg'
 
   // --- Screenshot ---
@@ -125,7 +93,6 @@ export default defineEventHandler(async (event) => {
       await appendLog({
         timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
         durationMs: Date.now() - startedAt, httpStatus: 504, screenshotFile: null,
-        dataFile: null,
         error: err?.message ?? 'Page load failed',
         errorType: isTimeout ? 'timeout' : 'screenshot',
       }).catch(() => {})
@@ -158,7 +125,7 @@ export default defineEventHandler(async (event) => {
       await appendLog({
         timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
         durationMs: Date.now() - startedAt, httpStatus: 500, screenshotFile: null,
-        dataFile: null, error: err?.message ?? 'Screenshot failed', errorType: 'screenshot',
+        error: err?.message ?? 'Screenshot failed', errorType: 'screenshot',
       }).catch(() => {})
       throw createError({ statusCode: 500, message: 'Screenshot failed' })
     }
@@ -198,7 +165,7 @@ ${schemaText}
     await appendLog({
       timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
       durationMs: Date.now() - startedAt, httpStatus: 502, screenshotFile: filename,
-      dataFile: null, error: err?.message ?? 'Gemini extraction failed', errorType: 'extraction',
+      error: err?.message ?? 'Gemini extraction failed', errorType: 'extraction',
     }).catch(() => {})
     throw createError({ statusCode: 502, message: 'Gemini extraction failed' })
   }
@@ -206,13 +173,12 @@ ${schemaText}
   try {
     const items = JSON.parse(text)
     const cat = categoryId ?? '000'
-    const dataFile = Array.isArray(items) && items.length > 0
-      ? await saveItems(items, cat, filename).catch(() => null)
-      : null
-    await appendLog({
-      timestamp: new Date().toISOString(), source: extractDomain(url), url,
-      categoryId: cat, durationMs: Date.now() - startedAt, httpStatus: 200,
-      screenshotFile: filename, dataFile, error: null, errorType: null,
+    const ts = new Date().toISOString()
+    await persistExtraction({
+      timestamp: ts, source: extractDomain(url), url,
+      categoryId: cat, screenshotFile: filename,
+      items: Array.isArray(items) ? items : [],
+      durationMs: Date.now() - startedAt,
       geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight,
     }).catch(() => {})
     return { filename, base64, mimeType, items }
@@ -220,7 +186,7 @@ ${schemaText}
     await appendLog({
       timestamp: new Date().toISOString(), source: extractDomain(url), url,
       categoryId: categoryId ?? null, durationMs: Date.now() - startedAt, httpStatus: 200,
-      screenshotFile: filename, dataFile: null, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse',
+      screenshotFile: filename, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse',
     }).catch(() => {})
     return { filename, base64, mimeType, items: [], raw: text }
   }

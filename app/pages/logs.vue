@@ -39,7 +39,7 @@
         <!-- KPI -->
         <v-row class="mb-4" dense>
           <v-col cols="6" sm="3">
-            <v-card rounded="lg" variant="tonal" color="primary" @click="activeView = 'entries'" class="cursor-pointer">
+            <v-card rounded="lg" variant="tonal" color="primary" @click="activeView = 'entries'" class="log-hover-card">
               <v-card-text class="text-center pa-4">
                 <div class="text-h4 font-weight-bold">{{ summary.total }}</div>
                 <div class="text-caption mt-1">ทำงานทั้งหมด</div>
@@ -48,7 +48,7 @@
           </v-col>
           <v-col cols="6" sm="3">
             <v-card rounded="lg" variant="tonal" color="success" @click="store.filterStatus('success')"
-              class="cursor-pointer">
+              class="log-hover-card">
               <v-card-text class="text-center pa-4">
                 <div class="text-h4 font-weight-bold">{{ summary.success }}</div>
                 <div class="text-caption mt-1">สำเร็จ</div>
@@ -57,7 +57,7 @@
           </v-col>
           <v-col cols="6" sm="3">
             <v-card rounded="lg" variant="tonal" :color="summary.failed > 0 ? 'error' : 'grey'"
-              @click="store.filterStatus('failed')" class="cursor-pointer">
+              @click="store.filterStatus('failed')" class="log-hover-card">
               <v-card-text class="text-center pa-4">
                 <div class="text-h4 font-weight-bold">{{ summary.failed }}</div>
                 <div class="text-caption mt-1">ล้มเหลว</div>
@@ -99,7 +99,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="(stat, src) in summary.bySource" :key="src" class="cursor-pointer"
+                  <tr v-for="(stat, src) in summary.bySource" :key="src" class="log-hover-row"
                     @click="store.filterSource(src as string)">
                     <td><v-chip size="x-small" label>{{ src }}</v-chip></td>
                     <td class="text-right">{{ stat.total }}</td>
@@ -127,7 +127,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="(stat, cat) in summary.byCategory" :key="cat" class="cursor-pointer"
+                  <tr v-for="(stat, cat) in summary.byCategory" :key="cat" class="log-hover-row"
                     @click="store.filterCategory(cat as string)">
                     <td>{{ cat }}</td>
                     <td class="text-right">{{ stat.total }}</td>
@@ -150,12 +150,12 @@
             <v-chip v-else size="small" color="success" label>ไม่มี error</v-chip>
             <v-spacer />
             <span class="text-caption text-disabled font-weight-regular">avg {{ summary.avgDurationMs.toLocaleString()
-              }} ms / request</span>
+            }} ms / request</span>
           </v-card-title>
           <v-divider />
           <template v-if="summary.errors.length">
             <v-list density="compact" lines="two">
-              <v-list-item v-for="(err, i) in sortedErrors" :key="i" :subtitle="err.url">
+              <v-list-item v-for="(err, i) in sortedErrors" :key="i" :subtitle="err.url" class="log-hover-row">
                 <template #prepend>
                   <v-chip size="x-small" :color="errorColor(err.errorType)" label class="mr-3">{{ err.errorType ??
                     'error' }}</v-chip>
@@ -163,7 +163,7 @@
                 <template #title>
                   <span class="text-error text-body-2">{{ err.error }}</span>
                   <v-chip v-if="err.searchQuery" size="x-small" variant="tonal" class="ml-2">🔍 {{ err.searchQuery
-                    }}</v-chip>
+                  }}</v-chip>
                 </template>
                 <template #append>
                   <v-chip size="x-small" :color="err.source === 'chrono24-search' ? 'blue' : 'grey'" variant="tonal"
@@ -186,16 +186,16 @@
       <!-- Filter bar -->
       <v-row class="mb-3" dense align="center">
         <v-col cols="12" sm="4">
-          <v-text-field v-model="logsSearch" label="ค้นหา URL / keyword" prepend-inner-icon="mdi-magnify" variant="outlined"
-            density="compact" hide-details clearable />
+          <v-text-field v-model="logsSearch" label="ค้นหา URL / keyword" prepend-inner-icon="mdi-magnify"
+            variant="outlined" density="compact" hide-details clearable />
         </v-col>
         <v-col cols="6" sm="2">
-          <v-select v-model="logsFilterSrc" :items="['ทั้งหมด', ...logsAvailableSources]" label="Source" variant="outlined"
-            density="compact" hide-details />
+          <v-select v-model="logsFilterSrc" :items="['ทั้งหมด', ...logsAvailableSources]" label="Source"
+            variant="outlined" density="compact" hide-details />
         </v-col>
         <v-col cols="6" sm="2">
-          <v-select v-model="logsFilterCat" :items="['ทั้งหมด', ...logsAvailableCategories]" label="Category" variant="outlined"
-            density="compact" hide-details />
+          <v-select v-model="logsFilterCat" :items="['ทั้งหมด', ...logsAvailableCategories]" label="Category"
+            variant="outlined" density="compact" hide-details />
         </v-col>
         <v-col cols="6" sm="2">
           <v-select v-model="logsFilterResult"
@@ -209,13 +209,13 @@
 
       <v-card rounded="lg">
         <v-data-table :headers="entryHeaders" :items="filteredEntries" density="compact" :items-per-page="25"
-          class="text-body-2" @click:row="(_: any, { item }: any) => store.openLogsDetail(item)">
+          hover class="text-body-2 log-data-table" @click:row="(_: any, { item }: any) => store.openLogsDetail(item)">
           <template #[`item.timestamp`]="{ item }">
             <span class="text-caption">{{ formatTime(item.timestamp) }}</span>
           </template>
           <template #[`item.httpStatus`]="{ item }">
             <v-chip size="x-small" :color="item.httpStatus === 200 ? 'success' : 'error'" label>{{ item.httpStatus
-              }}</v-chip>
+            }}</v-chip>
           </template>
           <template #[`item.source`]="{ item }">
             <v-chip size="x-small" :color="item.source === 'chrono24-search' ? 'blue' : 'grey'" variant="tonal" label>{{
@@ -239,7 +239,8 @@
             <span v-else class="text-disabled">-</span>
           </template>
           <template #[`item.searchQuery`]="{ item }">
-            <v-chip v-if="item.searchQuery" size="x-small" color="primary" variant="tonal" prepend-icon="mdi-magnify" label>{{ item.searchQuery }}</v-chip>
+            <v-chip v-if="item.searchQuery" size="x-small" color="primary" variant="tonal" prepend-icon="mdi-magnify"
+              label>{{ item.searchQuery }}</v-chip>
             <span v-else class="text-disabled">-</span>
           </template>
           <template #[`item.durationMs`]="{ item }">
@@ -255,80 +256,14 @@
       </v-card>
     </template>
 
-    <!-- Detail dialog -->
-    <v-dialog v-model="logsDetailOpen" max-width="860" scrollable>
-      <v-card v-if="logsDetailEntry" rounded="lg">
-        <v-card-title class="d-flex align-center pa-4">
-          <v-chip :color="logsDetailEntry.httpStatus === 200 ? 'success' : 'error'" label class="mr-3">{{
-            logsDetailEntry.httpStatus
-            }}</v-chip>
-          Log Detail
-          <v-spacer />
-          <v-btn icon="mdi-close" variant="text" size="small" @click="logsDetailOpen = false" />
-        </v-card-title>
-        <v-divider />
-        <v-card-text class="pa-4">
-          <!-- Screenshot -->
-          <ScreenshotImg v-if="logsDetailEntry.screenshotFile" :src="`/api/screenshot?file=${logsDetailEntry.screenshotFile}`"
-            max-height="260" class="mb-4" />
-
-          <v-table density="compact">
-            <tbody>
-              <tr v-for="[k, v] in detailRows" :key="k">
-                <td class="text-medium-emphasis font-weight-medium" style="width:160px">{{ k }}</td>
-                <td>
-                  <v-chip v-if="k === 'errorType' && v" size="x-small" :color="errorColor(v as string)" label>{{ v
-                  }}</v-chip>
-                  <span v-else-if="k === 'URL' && v" class="d-flex align-center ga-1">
-                    <span style="word-break:break-all">{{ v }}</span>
-                    <v-btn :href="v as string" target="_blank" rel="noopener" icon="mdi-open-in-new" size="x-small"
-                      variant="text" />
-                  </span>
-                  <span v-else-if="k === 'dataFile' && v" class="d-flex align-center ga-1">
-                    <span>{{ v }}</span>
-                    <v-btn :href="`/api/data?file=${v}`" target="_blank" icon="mdi-code-json" size="x-small"
-                      variant="text" />
-                  </span>
-                  <span v-else :class="k === 'error' && v ? 'text-error' : ''">{{ v ?? '-' }}</span>
-                </td>
-              </tr>
-            </tbody>
-          </v-table>
-
-          <!-- Extracted Items -->
-          <template v-if="logsDetailEntry.dataFile">
-            <v-divider class="my-4" />
-            <div class="mb-3 d-flex align-center ga-2">
-              ข้อมูลที่ Gemini ดึงได้
-            </div>
-            <v-row v-if="logsDetailItems.length" dense>
-              <v-col v-for="(item, i) in logsDetailItems" :key="i" cols="12">
-                <v-card variant="tonal" color="surface-variant" rounded="lg" class="pa-3 text-body">
-                  <v-row dense>
-                    <v-col v-for="[fk, fv] in Object.entries(item).filter(([, v]) => v != null && v !== '')" :key="fk"
-                      cols="6" sm="4">
-                      <div class="text-medium-emphasis">{{ fk }}</div>
-                      <div class="font-weight-medium">{{ fv }}</div>
-                    </v-col>
-                  </v-row>
-                </v-card>
-              </v-col>
-            </v-row>
-            <v-card v-else-if="!logsDetailItemsLoading" variant="outlined" rounded="lg"
-              class="pa-3 text-center text-disabled text-body-2">
-              ไม่มีข้อมูล
-            </v-card>
-          </template>
-        </v-card-text>
-      </v-card>
-    </v-dialog>
+    <LogDetailDialog />
   </v-container>
 </template>
 
 <script setup lang="ts">
 
-const store = useLogsEntriesStore()
-const route = useRoute()
+const store = useLogsEntriesStore();
+const route = useRoute();
 
 const {
   selectedDate, dateMenu, formattedDate,
@@ -336,23 +271,22 @@ const {
   logsSearch, logsFilterSrc, logsFilterCat, logsFilterResult,
   sortedErrors, logsAvailableSources, logsAvailableCategories,
   filteredEntries,
-  logsDetailOpen, logsDetailEntry, logsDetailItems, logsDetailItemsLoading,
-} = storeToRefs(store)
+} = storeToRefs(store);
 
-const initialDate = typeof route.query.date === 'string' ? route.query.date : null
-if (initialDate) selectedDate.value = initialDate
+const initialDate = typeof route.query.date === 'string' ? route.query.date : null;
+if (initialDate) selectedDate.value = initialDate;
 
 const datePickerDate = computed({
   get: () => new Date(selectedDate.value + 'T00:00:00'),
   set: (val: Date) => {
-    const y = val.getFullYear()
-    const m = String(val.getMonth() + 1).padStart(2, '0')
-    const d = String(val.getDate()).padStart(2, '0')
-    selectedDate.value = `${y}-${m}-${d}`
-    dateMenu.value = false
-    store.fetchAll()
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    selectedDate.value = `${y}-${m}-${d}`;
+    dateMenu.value = false;
+    store.fetchAll();
   },
-})
+});
 
 const entryHeaders = [
   { title: 'เวลา', key: 'timestamp', width: 90 },
@@ -363,51 +297,55 @@ const entryHeaders = [
   { title: 'Error', key: 'error' },
   { title: 'ms', key: 'durationMs', width: 90 },
   { title: 'in/out tokens', key: 'tokens', width: 130 },
-]
-
-const detailRows = computed(() => {
-  if (!logsDetailEntry.value) return []
-  const e = logsDetailEntry.value
-  return [
-    ['เวลา', new Date(e.timestamp).toLocaleString('th-TH')],
-    ['source', e.source],
-    ['searchQuery', e.searchQuery],
-    ['roundId', e.roundId],
-    ['URL', e.url],
-    ['categoryId', e.categoryId],
-    ['httpStatus', e.httpStatus],
-    ['screenshotFile', e.screenshotFile],
-    ['dataFile', e.dataFile],
-    ['durationMs', e.durationMs != null ? `${e.durationMs.toLocaleString()} ms` : null],
-    ['errorType', e.errorType],
-    ['error', e.error],
-    ['geminiInputTokens', e.geminiInputTokens != null ? e.geminiInputTokens.toLocaleString() : null],
-    ['geminiOutputTokens', e.geminiOutputTokens != null ? e.geminiOutputTokens.toLocaleString() : null],
-    ['imageResolution', e.imageWidth != null ? `${e.imageWidth} × ${e.imageHeight} px` : null],
-  ]
-})
+];
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 function errorColor(type: string | null) {
   const map: Record<string, string> = {
     timeout: 'warning', screenshot: 'error', extraction: 'orange',
     parse: 'purple', config: 'red',
-  }
-  return map[type ?? ''] ?? 'error'
+  };
+  return map[type ?? ''] ?? 'error';
 }
 
 onMounted(async () => {
-  await store.fetchAll()
-  const targetFile = typeof route.query.file === 'string' ? route.query.file : null
+  await store.fetchAll();
+  const targetFile = typeof route.query.file === 'string' ? route.query.file : null;
   if (targetFile) {
-    const match = store.logEntries.find(e => e.screenshotFile === targetFile)
+    const match = store.logEntries.find(e => e.screenshotFile === targetFile);
     if (match) {
-      activeView.value = 'entries'
-      store.openLogsDetail(match)
+      activeView.value = 'entries';
+      store.openLogsDetail(match);
     }
   }
-})
+});
 </script>
+
+<style scoped>
+.log-hover-card {
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.log-hover-card:hover {
+  filter: brightness(0.92);
+  transform: translateY(-1px);
+}
+
+.log-hover-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.log-hover-row:hover,
+:deep(.v-list-item.log-hover-row:hover) {
+  background-color: rgba(var(--v-theme-on-surface), 0.06);
+}
+
+.log-data-table :deep(tbody tr) {
+  cursor: pointer;
+}
+</style>

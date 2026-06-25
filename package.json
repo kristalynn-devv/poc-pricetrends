@@ -5,8 +5,10 @@
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
+    "build:pages": "node scripts/build-pages.mjs",
+    "pages:deploy": "pnpm build:pages && wrangler pages deploy .output/public --project-name=poc-pricetrends",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare && playwright install chromium"
+    "postinstall": "nuxt prepare && node scripts/postinstall.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
@@ -24,6 +26,7 @@
   "devDependencies": {
     "@types/sharp": "^0.32.0",
     "typescript": "^5.5.0",
-    "vite-plugin-vuetify": "^2.0.3"
+    "vite-plugin-vuetify": "^2.0.3",
+    "wrangler": "^4.0.0"
   }
 }

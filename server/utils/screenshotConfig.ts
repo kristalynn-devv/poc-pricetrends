@@ -1,20 +1,6 @@
-export interface ScreenshotClip {
-  enabled: boolean
-  x: number
-  y: number
-  width: number
-  height: number
-}
+import type { ScreenshotClip, ScreenshotConfig } from '#shared/types/screenshot'
 
-export interface ScreenshotConfig {
-  viewportWidth: number
-  viewportHeight: number
-  fullPage: boolean
-  quality: number
-  cropHeight?: number
-  clip: ScreenshotClip
-  limit: number
-}
+export type { ScreenshotClip, ScreenshotConfig } from '#shared/types/screenshot'
 
 export const DEFAULT_SCREENSHOT_CONFIG: ScreenshotConfig = {
   viewportWidth: 1920,

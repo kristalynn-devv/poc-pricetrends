@@ -1,6 +1,14 @@
+import { fileURLToPath } from 'node:url'
+
+const sharedDir = fileURLToPath(new URL('./shared', import.meta.url))
+const isPagesBuild = process.env.CF_PAGES === '1' || process.env.NUXT_PAGES_STATIC === '1'
+
 export default defineNuxtConfig({
   ssr: false,
   future: { compatibilityVersion: 4 },
+  alias: {
+    '#shared': sharedDir,
+  },
   modules: ['@pinia/nuxt', 'vuetify-nuxt-module', '@nuxtjs/google-fonts'],
   css: ['@mdi/font/css/materialdesignicons.css', '~/assets/css/global.css'],
   googleFonts: {
@@ -34,6 +42,19 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     geminiApiKey: '',
+    public: {
+      /** Empty = same-origin `/api`. Set when frontend is split (e.g. http://localhost:3001). */
+      apiBase: '',
+    },
+  },
+  nitro: {
+    preset: isPagesBuild ? 'static' : undefined,
+    alias: {
+      '#shared': sharedDir,
+    },
+    routeRules: {
+      '/api/**': { cors: true },
+    },
   },
   devServer: { port: 3000 },
 });
