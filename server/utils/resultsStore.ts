@@ -3,8 +3,6 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import type { ResultEntry } from '#shared/types/result'
 
-export type { ResultEntry } from '#shared/types/result'
-
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10).replace(/-/g, '')
 }

@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
-import type { FieldDef } from '~/composables/useCategoryFields'
-import { getCategoryFieldDefs } from '~/composables/useCategoryFields'
+import { getCategoryFieldDefs, type FieldDef } from '~/composables/useCategoryFields'
 import type { ItemResult, BatchSummary } from '#shared/types/item'
 import { SEARCH_ROUTE_CATEGORY, SEARCH_ROUTES } from '#shared/constants/searchRoutes'
 import { streamBatchSearch } from '~/lib/api/search'

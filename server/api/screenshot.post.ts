@@ -7,7 +7,7 @@ import { buildUrlScreenshotFilename } from '../utils/filename'
 
 export default defineEventHandler(async (event) => {
   const { url, categoryId, config: configRaw } = await readBody<{
-    url: string; categoryId?: string; config?: import('../utils/screenshotConfig').ScreenshotConfig
+    url: string; categoryId?: string; config?: import('#shared/types/screenshot').ScreenshotConfig
   }>(event)
   const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(configRaw))
   if (!url) throw createError({ statusCode: 400, message: 'url required' })

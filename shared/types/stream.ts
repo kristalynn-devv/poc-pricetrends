@@ -1,5 +1,4 @@
-import type { BatchSummary } from './item'
-import type { ItemResult } from './item'
+import type { BatchSummary, ItemResult } from './item'
 
 export interface StreamLogEvent {
   type: 'log'

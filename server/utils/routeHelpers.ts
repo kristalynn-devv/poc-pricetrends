@@ -1,7 +1,3 @@
-import type { ItemResult } from '#shared/types/item'
-
-export type { ItemResult } from '#shared/types/item'
-
 export function createStreamEmitter(siteName: string) {
   const encoder = new TextEncoder()
   let ctrl!: ReadableStreamDefaultController

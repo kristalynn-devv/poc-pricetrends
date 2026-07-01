@@ -58,6 +58,21 @@ export const useLogsEntriesStore = defineStore('logsEntries', () => {
       .filter(Boolean) as ResultEntry[]
   })
 
+  function roundCategoryKey(entries: ResultEntry[]): string {
+    const cats = [...new Set(entries.map(e => e.categoryId).filter(Boolean))].sort() as string[]
+    return cats.length > 0 ? cats.join(',') : '__none__'
+  }
+
+  function roundCategoryLabel(entries: ResultEntry[]): string {
+    const cats = [...new Set(entries.map(e => e.categoryId).filter(Boolean))] as string[]
+    if (cats.length === 0) return 'ไม่ระบุหมวด'
+    if (cats.length === 1) {
+      const id = cats[0]
+      return CATEGORY_NAMES[id] ? `${CATEGORY_NAMES[id]} (${id})` : `หมวด ${id}`
+    }
+    return cats.map(id => CATEGORY_NAMES[id] ?? id).join(' · ')
+  }
+
   const rounds = computed(() => {
     const map = new Map<string, ResultEntry[]>()
     for (const e of filteredGroups.value) {
@@ -65,21 +80,51 @@ export const useLogsEntriesStore = defineStore('logsEntries', () => {
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(e)
     }
-    return [...map.entries()]
+    const built = [...map.entries()]
       .map(([roundId, entries]) => {
         entries.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
         const timestamp = entries[0].timestamp
         const query = entries.find(e => e.searchQuery)?.searchQuery ?? ''
+        const categoryKey = roundCategoryKey(entries)
+        const categoryLabel = roundCategoryLabel(entries)
         const catMap = new Map<string, ResultEntry[]>()
         for (const e of entries) {
           const cat = e.categoryId ?? '__none__'
           if (!catMap.has(cat)) catMap.set(cat, [])
           catMap.get(cat)!.push(e)
         }
-        const byCategory = [...catMap.entries()].map(([categoryId, catEntries]) => ({ categoryId, entries: catEntries }))
-        return { roundId, timestamp, query, byCategory }
+        const byCategory = [...catMap.entries()].map(([categoryId, catEntries]) => {
+          const queryMap = new Map<string, ResultEntry[]>()
+          for (const e of catEntries) {
+            const q = e.searchQuery?.trim() || '__none__'
+            if (!queryMap.has(q)) queryMap.set(q, [])
+            queryMap.get(q)!.push(e)
+          }
+          const byQuery = [...queryMap.entries()]
+            .map(([queryKey, queryEntries]) => {
+              queryEntries.sort((a, b) => a.source.localeCompare(b.source))
+              return {
+                query: queryKey === '__none__' ? '' : queryKey,
+                entries: queryEntries,
+              }
+            })
+            .sort((a, b) => {
+              const ta = a.entries[0]?.timestamp ?? ''
+              const tb = b.entries[0]?.timestamp ?? ''
+              return new Date(ta).getTime() - new Date(tb).getTime()
+            })
+          return { categoryId, byQuery }
+        })
+        return { roundId, timestamp, query, categoryKey, categoryLabel, roundNumberInCategory: 1, byCategory }
       })
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+
+    const countByCategory = new Map<string, number>()
+    for (const round of [...built].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())) {
+      round.roundNumberInCategory = (countByCategory.get(round.categoryKey) ?? 0) + 1
+      countByCategory.set(round.categoryKey, round.roundNumberInCategory)
+    }
+    return built
   })
 
   const flatItems = computed(() => filteredGroups.value.flatMap(g => g.items))

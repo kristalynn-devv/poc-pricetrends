@@ -2,11 +2,12 @@ import { chromium } from 'playwright'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { appendLog, extractDomain } from '../utils/logger'
+import { appendLog } from '../utils/logger'
+import { extractDomain } from '#shared/utils/domain'
 import { persistExtraction } from '../utils/persistExtraction'
-import type { LogEntry } from '../utils/logger'
+import type { LogEntry } from '#shared/types/log'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
-import type { ScreenshotConfig } from '../utils/screenshotConfig'
+import type { ScreenshotConfig } from '#shared/types/screenshot'
 import { takeScreenshot } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildUrlScreenshotFilename } from '../utils/filename'
@@ -160,7 +161,7 @@ ${schemaText}
   let geminiInputTokens: number | undefined
   let geminiOutputTokens: number | undefined
   try {
-    ;({ text, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight, imageWidth, imageHeight } = await callGemini(model, prompt, base64, mimeType))
+    ;({ text, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight } = await callGemini(model, prompt, base64, mimeType))
   } catch (err: any) {
     await appendLog({
       timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,

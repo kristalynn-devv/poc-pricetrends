@@ -1,11 +1,12 @@
 import type { Browser, BrowserContext } from 'playwright'
 import { chromium } from 'playwright'
-import type { ItemResult } from '../utils/routeHelpers'
+import type { ItemResult } from '#shared/types/item'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog } from '../utils/logger'
 import { persistExtraction } from '../utils/persistExtraction'
-import { mergeScreenshotConfig, type ScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
+import type { ScreenshotConfig } from '#shared/types/screenshot'
+import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
 import { dismissCookieBanner, createStealthContext, applyStealthScripts, takeScreenshot, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
@@ -83,7 +84,7 @@ async function newPersistentContext(cfg: ReturnType<typeof buildScreenshotOption
 
 export default defineEventHandler(async (event) => {
   const { query, categoryId = '103', template, limit, config: configRaw, roundId } = await readBody<{
-    query: string; categoryId?: string; template?: Record<string, string>; limit?: number; screenshotConfig?: import('../utils/screenshotConfig').ScreenshotConfig; roundId?: string}>(event)
+    query: string; categoryId?: string; template?: Record<string, string>; limit?: number; screenshotConfig?: import('#shared/types/screenshot').ScreenshotConfig; roundId?: string}>(event)
   const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(configRaw))
 
   if (!query?.trim()) throw createError({ statusCode: 400, message: 'query required' })

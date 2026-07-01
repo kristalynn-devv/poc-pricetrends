@@ -1,6 +1,4 @@
-import type { ScreenshotClip, ScreenshotConfig } from '#shared/types/screenshot'
-
-export type { ScreenshotClip, ScreenshotConfig } from '#shared/types/screenshot'
+import type { ScreenshotConfig } from '#shared/types/screenshot'
 
 export const DEFAULT_SCREENSHOT_CONFIG: ScreenshotConfig = {
   viewportWidth: 1920,

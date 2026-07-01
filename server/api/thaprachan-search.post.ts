@@ -1,4 +1,4 @@
-import type { ItemResult } from '../utils/routeHelpers'
+import type { ItemResult } from '#shared/types/item'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -19,7 +19,7 @@ function buildFilename(index: number): string {
 
 export default defineEventHandler(async (event) => {
   const { query, categoryId = '106', template, limit, config: configRaw, roundId } = await readBody<{
-    query: string; categoryId?: string; template?: Record<string, string>; limit?: number; screenshotConfig?: import('../utils/screenshotConfig').ScreenshotConfig; roundId?: string}>(event)
+    query: string; categoryId?: string; template?: Record<string, string>; limit?: number; screenshotConfig?: import('#shared/types/screenshot').ScreenshotConfig; roundId?: string}>(event)
   const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(configRaw))
 
   if (!query?.trim()) throw createError({ statusCode: 400, message: 'query required' })
@@ -98,11 +98,30 @@ export default defineEventHandler(async (event) => {
           try {
             await itemPage.goto(url, { waitUntil: 'load', timeout: 30000 })
             await itemPage.waitForTimeout(1500)
-            await preparePageForScreenshot(itemPage)
+            // NOTE: do not call preparePageForScreenshot/dismissCookieBanner here —
+            // this page's own popup close button matches the generic "ปิด" selector
+            // and clicking it closes the product overlay we're about to screenshot.
 
-            // Wait for the overlay div.products_detail.content_popup.active
-            const overlay = itemPage.locator('div.products_detail.content_popup.active').first()
-            await overlay.waitFor({ state: 'visible', timeout: 10000 })
+            // Wait for the product overlay (div.wrap.delay_time > div.hilight_products)
+            const overlay = itemPage.locator('div.hilight_products').first()
+            try {
+              await overlay.waitFor({ state: 'visible', timeout: 15000 })
+            } catch (err) {
+              emit('warn', `[${i + 1}] Overlay not visible, retrying with reload`, { url })
+              await itemPage.reload({ waitUntil: 'load', timeout: 30000 })
+              await itemPage.waitForTimeout(1500)
+              await overlay.waitFor({ state: 'visible', timeout: 15000 })
+            }
+            await itemPage.waitForTimeout(300)
+
+            // The popup's backdrop is sized to `100vh` at the viewport height active when the
+            // page loaded. `hilight_products` (the actual product content) is often taller than
+            // that viewport, so a plain element screenshot forces Playwright to grow the capture
+            // area beyond the backdrop — exposing the real page behind it (e.g. the "recently
+            // updated" grid) instead of popup background. Resize the viewport to fit the full
+            // content height first so the backdrop covers the entire capture area.
+            const contentHeight = await overlay.evaluate((el) => el.scrollHeight)
+            await itemPage.setViewportSize({ width: screenshotCfg.viewport.width, height: Math.ceil(contentHeight) + 100 })
             await itemPage.waitForTimeout(300)
 
             const buffer = await overlay.screenshot({ type: 'jpeg', quality: screenshotCfg.screenshotOpts.quality })

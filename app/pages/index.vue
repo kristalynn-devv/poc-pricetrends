@@ -7,7 +7,7 @@
           <p class="text-body-2 text-medium-emphasis mb-0">ค้นหาราคาสินค้าแยกตามหมวด</p>
         </div>
       </v-col>
-      <v-col cols="auto" class="d-flex align-center ga-1">
+      <v-col cols="auto" class="d-flex ga-1">
         <v-btn variant="text" prepend-icon="mdi-table-eye" to="/entries" size="small"
           class="text-none">รายการข้อมูล</v-btn>
         <v-btn variant="text" prepend-icon="mdi-text-box-outline" to="/logs" size="small" class="text-none">System
@@ -47,11 +47,11 @@
             <div class="d-flex align-center ga-2 mb-2">
               <v-text-field v-model="grp.newQuery"
                 :placeholder="[...grp.requiredFields, ...grp.optionalFields].map(f => f.label).join('  ')"
-                variant="outlined" density="compact" hide-details :disabled="grp.running"
-                style="flex:1; min-width:0" @keyup.enter="groupsStore.addQuery(grp)" clearable />
+                variant="outlined" density="compact" hide-details :disabled="grp.running" style="flex:1; min-width:0"
+                @keyup.enter="groupsStore.addQuery(grp)" clearable />
               <v-btn color="secondary" variant="tonal" size="small" class="text-none" height="40"
-                :disabled="!grp.newQuery?.trim() || grp.running"
-                prepend-icon="mdi-plus" @click.stop="groupsStore.addQuery(grp)">
+                :disabled="!grp.newQuery?.trim() || grp.running" prepend-icon="mdi-plus"
+                @click.stop="groupsStore.addQuery(grp)">
                 เพิ่มรายการ
               </v-btn>
             </div>
@@ -114,8 +114,9 @@
 
                 <template #append>
                   <div class="d-flex align-center ga-1">
-                    <v-btn v-if="src.apiRoute" size="small" variant="text" :color="cfgStore.hasCustomCfg(src.name) ? 'primary' : undefined"
-                      icon="mdi-tune" @click.stop="openSrcCfg(src.name)" />
+                    <v-btn v-if="src.apiRoute" size="small" variant="text"
+                      :color="cfgStore.hasCustomCfg(src.name) ? 'primary' : undefined" icon="mdi-tune"
+                      @click.stop="openSrcCfg(src.name)" />
                     <v-btn v-if="grp.runs[src.name]" size="small" variant="tonal" prepend-icon="mdi-console"
                       @click.stop="openDetail(grp, src.name)">
                       ดูรายละเอียด
@@ -154,8 +155,8 @@
           </v-row>
           <v-row dense align="center" class="mb-2">
             <v-col cols="6">
-              <v-text-field v-model.number="srcCfgEdit.quality" label="Quality (1–100)" type="number"
-                variant="outlined" density="compact" hide-details />
+              <v-text-field v-model.number="srcCfgEdit.quality" label="Quality (1–100)" type="number" variant="outlined"
+                density="compact" hide-details />
             </v-col>
             <v-col cols="6">
               <v-text-field v-model.number="srcCfgEdit.cropHeight" label="Crop height (px)" type="number"
@@ -165,8 +166,8 @@
           <v-divider class="mb-3" />
           <v-row dense>
             <v-col cols="6">
-              <v-combobox v-model="srcCfgEdit.limit" :items="[1, 3, 5, 10]" label="จำนวนชิ้น/คำค้น"
-                variant="outlined" density="compact" hide-details :return-object="false" type="number" />
+              <v-combobox v-model="srcCfgEdit.limit" :items="[1, 3, 5, 10]" label="จำนวนชิ้น/คำค้น" variant="outlined"
+                density="compact" hide-details :return-object="false" type="number" />
             </v-col>
           </v-row>
         </v-card-text>
@@ -298,8 +299,8 @@ const detailExtracted = computed(() => {
 
 const totalFound = computed(() =>
   groups.value.reduce((sum, grp) => sum + groupsStore.grpTotalItems(grp), 0)
-)
-const anyRunning = computed(() => groups.value.some(g => g.running))
+);
+const anyRunning = computed(() => groups.value.some(g => g.running));
 
 const { getAllowedKeys, getFieldOrder } = useCategoryFields();
 const { downloadJson } = useDownloadJson();

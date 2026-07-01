@@ -4,9 +4,6 @@ import { existsSync } from 'node:fs'
 import type { DailySummary, LogEntry } from '#shared/types/log'
 import { extractDomain } from '#shared/utils/domain'
 
-export type { DailySummary, LogEntry } from '#shared/types/log'
-export { extractDomain }
-
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10).replace(/-/g, '')
 }
