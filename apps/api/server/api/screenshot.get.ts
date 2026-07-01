@@ -3,6 +3,20 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { apiError } from '../utils/errors'
 
+defineRouteMeta({
+  openAPI: {
+    tags: ['Core'],
+    summary: 'Serve a saved screenshot (query param)',
+    description: 'Equivalent to GET /api/screenshots/<filename>.',
+    parameters: [{ name: 'file', in: 'query', required: true, schema: { type: 'string' } }],
+    responses: {
+      200: { description: 'raw JPEG image', content: { 'image/jpeg': { schema: { type: 'string', format: 'binary' } } } },
+      400: { description: 'missing file' },
+      404: { description: 'not found' },
+    },
+  },
+})
+
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const file = typeof query.file === 'string' ? query.file : null

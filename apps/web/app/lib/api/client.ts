@@ -33,6 +33,7 @@ export async function apiJson<T>(path: string, init?: RequestInit, apiBase = '')
     const message = body?.data?.message ?? body?.message ?? `HTTP ${res.status}`
     throw new ApiClientError(res.status, errorType, message)
   }
+  if (res.status === 204) return null as T
   return res.json() as Promise<T>
 }
 

@@ -2,6 +2,19 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 
+defineRouteMeta({
+  openAPI: {
+    tags: ['Core'],
+    summary: 'Serve a saved screenshot (path param)',
+    description: 'Equivalent to GET /api/screenshot?file=<filename>.',
+    responses: {
+      200: { description: 'raw JPEG image', content: { 'image/jpeg': { schema: { type: 'string', format: 'binary' } } } },
+      400: { description: 'invalid filename' },
+      404: { description: 'not found' },
+    },
+  },
+})
+
 export default defineEventHandler(async (event) => {
   const filename = getRouterParam(event, 'filename') ?? ''
   if (!filename || filename.includes('..') || filename.includes('/')) {

@@ -33,6 +33,8 @@ Each app can also be run directly: `pnpm --filter poc-pricetrends-api dev`, `pnp
 2. กด "ถ่ายรูป" → `POST /api/analyze` — Playwright ถ่าย + Gemini extract ในครั้งเดียว บันทึกภาพอัตโนมัติ
 3. ผลลัพธ์แสดงใน UI ทันที (ไม่ต้องกดปุ่มแยก)
 
+**Swagger/OpenAPI docs** — Nitro's built-in generator, no extra dependency. Enabled via `experimental.openAPI` + `openAPI` in `apps/api/nitro.config.ts`. Live at `http://localhost:8080/api-docs` (Swagger UI, renamed from Nitro's default `/_swagger` via `openAPI.ui.swagger.route`), `/_scalar` (Scalar UI), `/_openapi.json` (raw spec) — works in both `pnpm dev:api` and `pnpm --filter poc-pricetrends-api preview`. Each route declares its schema via `defineRouteMeta({ openAPI: {...} })` at the top of the route file (auto-imported, no import needed) — **must be a literal object**, not a call to a shared helper function (Nitro's build-time extractor only walks static AST literals, so batch-search routes each inline their own copy of the same shape instead of sharing one).
+
 **Server routes** (all under `apps/api/server/api/` — see `apps/api/API.md` for full request/response docs):
 - `server/api/analyze.post.ts` — **main endpoint**: screenshot + extract + save ในครั้งเดียว → `{ filename, base64, mimeType, items[] }`
 - `server/api/screenshot.post.ts` — standalone screenshot → `{ base64, mimeType, filename }`

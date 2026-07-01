@@ -43,6 +43,54 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
   movementType: 'ประเภทเครื่อง เช่น Automatic, Quartz',
 }
 
+defineRouteMeta({
+  openAPI: {
+    tags: ['Core'],
+    summary: 'Screenshot + Gemini extract + save',
+    description: 'Main endpoint used by the UI\'s "ถ่ายรูป" button. Takes a Playwright screenshot of the URL, sends it to Gemini for structured extraction, and persists the result.',
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            required: ['url'],
+            properties: {
+              url: { type: 'string' },
+              categoryId: { type: 'string', description: "'103' | '106' | '107' | ... — selects the field schema" },
+              template: { type: 'object', additionalProperties: { type: 'string' }, description: 'custom field schema, overrides categoryId defaults' },
+              config: { type: 'object', description: 'viewport/quality/clip overrides (Partial<ScreenshotConfig>)' },
+            },
+          },
+        },
+      },
+    },
+    responses: {
+      200: {
+        description: 'Screenshot + extracted items',
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                filename: { type: 'string' },
+                base64: { type: 'string', description: 'JPEG, base64-encoded' },
+                mimeType: { type: 'string', enum: ['image/jpeg'] },
+                items: { type: 'array', items: { type: 'object' } },
+                raw: { type: 'string', description: 'present only when JSON parsing failed' },
+              },
+            },
+          },
+        },
+      },
+      400: { description: 'config error — missing url' },
+      500: { description: 'config error — Gemini key not configured, or screenshot failure' },
+      502: { description: 'extraction error — Gemini call failed' },
+      504: { description: 'timeout/screenshot error — page load failed' },
+    },
+  },
+})
+
 export default defineEventHandler(async (event) => {
   const { url, categoryId, template, config: configRaw } = await readBody<{
     url: string

@@ -32,6 +32,50 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
   movementType: 'ประเภทเครื่อง เช่น Automatic, Quartz',
 }
 
+defineRouteMeta({
+  openAPI: {
+    tags: ['Core'],
+    summary: 'Standalone Gemini extraction',
+    description: 'Extracts structured items from an already-captured base64 image — no Playwright, no persistence.',
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            required: ['base64'],
+            properties: {
+              base64: { type: 'string' },
+              mimeType: { type: 'string' },
+              categoryId: { type: 'string' },
+              template: { type: 'object', additionalProperties: { type: 'string' } },
+            },
+          },
+        },
+      },
+    },
+    responses: {
+      200: {
+        description: 'Extracted items, or empty array + raw text if JSON parsing failed',
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                items: { type: 'array', items: { type: 'object' } },
+                raw: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      400: { description: 'missing base64' },
+      500: { description: 'Gemini key not configured' },
+      502: { description: 'Gemini call failed' },
+    },
+  },
+})
+
 export default defineEventHandler(async (event) => {
   const { base64, mimeType, categoryId, template } = await readBody<{
     base64: string

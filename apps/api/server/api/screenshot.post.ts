@@ -6,6 +6,44 @@ import { takeScreenshot } from '../utils/browserUtils'
 import { buildUrlScreenshotFilename } from '../utils/filename'
 import { apiError, classifyError } from '../utils/errors'
 
+defineRouteMeta({
+  openAPI: {
+    tags: ['Core'],
+    summary: 'Standalone screenshot',
+    description: 'Screenshot only, no Gemini extraction, no persistence to results/.',
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            required: ['url'],
+            properties: {
+              url: { type: 'string' },
+              categoryId: { type: 'string' },
+              config: { type: 'object', description: 'ScreenshotConfig' },
+            },
+          },
+        },
+      },
+    },
+    responses: {
+      200: {
+        description: 'saved filename — image bytes are written to output/screenshots/, not returned inline',
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: { filename: { type: 'string' }, mimeType: { type: 'string', enum: ['image/jpeg'] } },
+            },
+          },
+        },
+      },
+      400: { description: 'missing url' },
+    },
+  },
+})
+
 export default defineEventHandler(async (event) => {
   const { url, categoryId, config: configRaw } = await readBody<{
     url: string; categoryId?: string; config?: import('#shared/types/screenshot').ScreenshotConfig

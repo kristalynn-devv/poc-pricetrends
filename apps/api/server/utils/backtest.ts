@@ -75,7 +75,7 @@ export async function runSourceBacktest(source: SearchRouteKey, baseUrl: string)
   return result
 }
 
-export async function runAllBacktests(baseUrl: string, concurrency = 3): Promise<BacktestResult[]> {
+export async function runAllBacktests(baseUrl: string, concurrency = 1): Promise<BacktestResult[]> {
   const sources = Object.keys(SEARCH_ROUTES) as SearchRouteKey[]
   const results: BacktestResult[] = new Array(sources.length)
   let i = 0

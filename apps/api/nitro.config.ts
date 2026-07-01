@@ -15,4 +15,18 @@ export default defineNitroConfig({
   routeRules: {
     '/api/**': { cors: true },
   },
+  experimental: {
+    openAPI: true,
+  },
+  openAPI: {
+    meta: {
+      title: 'poc-pricetrends API',
+      description: 'Screenshot + Gemini extraction backend. See CLAUDE.md / API.md for architecture notes.',
+      version: '1.0.0',
+    },
+    production: 'runtime',
+    ui: {
+      swagger: { route: '/api-docs' },
+    },
+  },
 })
