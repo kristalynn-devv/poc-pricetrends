@@ -1,0 +1,18 @@
+import { fileURLToPath } from 'node:url'
+import { defineNitroConfig } from 'nitropack/config'
+
+const sharedDir = fileURLToPath(new URL('../../packages/shared', import.meta.url))
+
+export default defineNitroConfig({
+  compatibilityDate: '2026-07-01',
+  srcDir: 'server',
+  alias: {
+    '#shared': sharedDir,
+  },
+  runtimeConfig: {
+    geminiApiKey: process.env.NUXT_GEMINI_API_KEY ?? process.env.NITRO_GEMINI_API_KEY ?? '',
+  },
+  routeRules: {
+    '/api/**': { cors: true },
+  },
+})

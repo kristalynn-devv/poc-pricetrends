@@ -6,7 +6,7 @@ import { runCategoryCron } from './cronRunner'
 const tasks = new Map<string, ScheduledTask>()
 
 function getBaseUrl(): string {
-  const port = process.env.NITRO_PORT || process.env.PORT || 3000
+  const port = process.env.NITRO_PORT || process.env.PORT || 8080
   return `http://localhost:${port}`
 }
 

@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 
-const sharedDir = fileURLToPath(new URL('./shared', import.meta.url))
+const sharedDir = fileURLToPath(new URL('../../packages/shared', import.meta.url))
 const isPagesBuild = process.env.CF_PAGES === '1' || process.env.NUXT_PAGES_STATIC === '1'
 
 export default defineNuxtConfig({
@@ -41,20 +41,13 @@ export default defineNuxtConfig({
     },
   },
   runtimeConfig: {
-    geminiApiKey: '',
     public: {
-      /** Empty = same-origin `/api`. Set when frontend is split (e.g. http://localhost:3001). */
+      /** Backend origin, e.g. http://localhost:8080. Empty = same-origin `/api` (only valid if reverse-proxied together). */
       apiBase: '',
     },
   },
   nitro: {
     preset: isPagesBuild ? 'static' : undefined,
-    alias: {
-      '#shared': sharedDir,
-    },
-    routeRules: {
-      '/api/**': { cors: true },
-    },
   },
   devServer: { port: 3000 },
 });
