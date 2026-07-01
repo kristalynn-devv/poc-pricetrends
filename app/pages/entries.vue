@@ -3,7 +3,7 @@
     <v-row class="mb-4">
       <v-col>
         <h1 class="text-h4 font-weight-bold">ผลลัพธ์รวม</h1>
-        <p class="text-body-2 text-medium-emphasis mt-1">ข้อมูลสินค้าที่ดึงได้รายวัน</p>
+        <p class=" text-medium-emphasis mt-1">ข้อมูลสินค้าที่ดึงได้รายวัน</p>
       </v-col>
       <v-col cols="auto" class="d-flex ga-1">
         <v-btn variant="text" prepend-icon="mdi-text-box-outline" to="/logs" size="small" class="text-none">System
@@ -71,7 +71,7 @@
         <v-tabs v-model="selectedRound" color="primary" show-arrows slider-color="primary">
           <v-tab v-for="round in rounds" :key="round.roundId" :value="round.roundId" class="text-none">
             <div class="d-flex flex-column align-start py-1">
-              <span class="text-body-2 font-weight-medium">{{ round.categoryLabel }}</span>
+              <span class=" font-weight-medium">{{ round.categoryLabel }}</span>
               <span class="text-caption text-medium-emphasis">
                 รอบที่ {{ round.roundNumberInCategory }}
               </span>
@@ -140,7 +140,7 @@
                         :key="queryGroup.query || `__none__${qi}`">
                         <v-expansion-panel-title class="px-4 py-2">
                           <v-icon class="me-2" size="small" color="primary">mdi-magnify</v-icon>
-                          <span class="text-body-2 font-weight-medium">
+                          <span class=" font-weight-medium">
                             {{ queryGroup.query || 'ไม่ระบุคำค้น' }}
                           </span>
                           <v-spacer />

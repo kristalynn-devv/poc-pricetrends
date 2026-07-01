@@ -1,4 +1,4 @@
-export type LogErrorType = 'timeout' | 'screenshot' | 'extraction' | 'parse' | 'config' | null
+export type LogErrorType = 'timeout' | 'screenshot' | 'extraction' | 'parse' | 'config' | 'notfound' | null
 
 export interface LogEntry {
   timestamp: string

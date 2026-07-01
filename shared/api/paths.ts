@@ -9,6 +9,9 @@ export const API_PATHS = {
   screenshot: '/api/screenshot',
   analyze: '/api/analyze',
   extract: '/api/extract',
+  backtest: '/api/backtest',
+  cronConfig: '/api/cron-config',
+  cronRuns: '/api/cron-runs',
 } as const
 
 export function screenshotPath(file: string): string {

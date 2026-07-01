@@ -4,7 +4,7 @@
       <v-col>
         <h1 class="text-h4 font-weight-bold">Price Extractor</h1>
         <div class="d-flex align-center ga-2 mt-1">
-          <p class="text-body-2 text-medium-emphasis mb-0">ค้นหาราคาสินค้าแยกตามหมวด</p>
+          <p class=" text-medium-emphasis mb-0">ค้นหาราคาสินค้าแยกตามหมวด</p>
         </div>
       </v-col>
       <v-col cols="auto" class="d-flex ga-1">
@@ -12,6 +12,8 @@
           class="text-none">รายการข้อมูล</v-btn>
         <v-btn variant="text" prepend-icon="mdi-text-box-outline" to="/logs" size="small" class="text-none">System
           Logs</v-btn>
+        <v-btn variant="text" prepend-icon="mdi-clipboard-check-outline" to="/backtest" size="small"
+          class="text-none">Backtest</v-btn>
       </v-col>
     </v-row>
 
@@ -26,6 +28,12 @@
           <div class="d-flex align-center ga-1 me-2" @click.stop>
             <span class="text-caption text-medium-emphasis">{{grp.sources.filter(s => s.apiRoute).length}}/{{
               grp.sources.length }} แหล่งพร้อมใช้</span>
+            <v-btn size="small" variant="text" icon="mdi-cog-outline"
+              :color="catCfgStore.hasCustomCfg(grp.label) ? 'primary' : undefined"
+              @click.stop="openCatCfg(grp.label)" />
+            <v-btn size="small" variant="text" icon="mdi-clock-outline"
+              :color="cronCfgStore.getCronCfg(grp.label).enabled ? 'primary' : undefined"
+              @click.stop="openCronCfg(grp.label)" />
             <template v-if="groupsStore.grpTotalItems(grp) > 0 || grp.running">
               <v-chip size="x-small" :color="grp.running ? 'primary' : 'success'" variant="tonal">
                 <v-progress-circular v-if="grp.running" indeterminate size="8" width="2" class="mr-1" />
@@ -71,7 +79,8 @@
               <v-col cols="auto" class="d-flex align-center ga-2">
                 <v-btn color="primary" :loading="grp.running" height="40"
                   :disabled="grp.queries.length === 0 || !grp.sources.some(s => s.apiRoute && grp.enabled[s.name])"
-                  prepend-icon="mdi-play" @click="groupsStore.runGroup(grp, cfgStore.getSourceCfg)">
+                  prepend-icon="mdi-play"
+                  @click="groupsStore.runGroup(grp, getSrcCfgForGroup(grp), catCfgStore.getCategoryCfg(grp.label))">
                   ค้นหา
                 </v-btn>
               </v-col>
@@ -100,7 +109,7 @@
                   </div>
                 </template>
 
-                <v-list-item-title class="text-body-2 font-weight-regular d-flex align-center ga-1">
+                <v-list-item-title class="font-weight-regular d-flex align-center ga-1">
                   <span>{{ src.name }}</span>
                   <v-progress-circular v-if="grp.runs[src.name]?.loading" indeterminate size="14" width="2" />
                   <v-chip v-else-if="groupsStore.srcExtracted(grp, src.name).length > 0" size="x-small" color="primary"
@@ -135,7 +144,7 @@
       <v-card v-if="srcCfgTarget">
         <v-card-title class="d-flex align-center ga-1 pt-4 px-4">
           <v-icon size="small">mdi-tune</v-icon>
-          <span class="text-body-1">{{ srcCfgTarget }}</span>
+          <span class="">{{ srcCfgTarget }}</span>
           <v-spacer />
           <v-btn icon="mdi-close" size="small" variant="text" @click="srcCfgOpen = false" />
         </v-card-title>
@@ -146,7 +155,7 @@
                 variant="outlined" density="compact" hide-details />
             </v-col>
             <v-col cols="2" class="d-flex align-center justify-center">
-              <span class="text-body-2 text-medium-emphasis">×</span>
+              <span class=" text-medium-emphasis">×</span>
             </v-col>
             <v-col cols="5">
               <v-text-field v-model.number="srcCfgEdit.viewportHeight" label="Height (px)" type="number"
@@ -176,6 +185,98 @@
             @click="cfgStore.resetSourceCfg(srcCfgTarget); srcCfgOpen = false">Reset</v-btn>
           <v-spacer />
           <v-btn color="primary" size="small" class="text-none" @click="saveSrcCfg">ตกลง</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ── Per-category Config Dialog ── -->
+    <v-dialog v-model="catCfgOpen" max-width="360">
+      <v-card v-if="catCfgTarget">
+        <v-card-title class="d-flex align-center ga-1 pt-4 px-4">
+          <v-icon size="small">mdi-cog-outline</v-icon>
+          <span class="">{{ catCfgTarget }}</span>
+          <v-spacer />
+          <v-btn icon="mdi-close" size="small" variant="text" @click="catCfgOpen = false" />
+        </v-card-title>
+        <v-card-text class="px-4 pb-2">
+          <v-row dense>
+            <v-col cols="6">
+              <v-text-field v-model.number="catCfgEdit.maxSources" label="จำนวน source" type="number" min="1"
+                variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col cols="6">
+              <v-combobox v-model="catCfgEdit.itemsPerSource" :items="[1, 3, 5, 10]" label="จำนวนชิ้น/source"
+                variant="outlined" density="compact" hide-details :return-object="false" type="number" />
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-4">
+          <v-btn variant="text" size="small" class="text-none"
+            @click="catCfgStore.resetCategoryCfg(catCfgTarget); catCfgOpen = false">Reset</v-btn>
+          <v-spacer />
+          <v-btn color="primary" size="small" class="text-none" @click="saveCatCfg">ตกลง</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ── Cron config dialog ── -->
+    <v-dialog v-model="cronCfgOpen" max-width="440">
+      <v-card v-if="cronCfgTarget">
+        <v-card-title class="d-flex align-center ga-1 pt-4 px-4">
+          <v-icon size="small">mdi-clock-outline</v-icon>
+          <span>{{ cronCfgTarget }}</span>
+          <v-spacer />
+          <v-btn icon="mdi-close" size="small" variant="text" @click="cronCfgOpen = false" />
+        </v-card-title>
+        <v-card-text class="px-4 pb-2">
+          <v-switch v-model="cronCfgEdit.enabled" label="เปิดใช้งาน cron" color="primary" density="compact"
+            hide-details class="mb-2" />
+
+          <v-text-field v-model="cronCfgEdit.cronExpression" label="Cron expression (นาที ชม. วัน เดือน วันในสัปดาห์)"
+            variant="outlined" density="compact" hide-details class="mb-1" placeholder="0 8 * * *" />
+          <div class="d-flex flex-wrap ga-1 mb-3">
+            <v-chip v-for="p in cronPresets" :key="p.expr" size="x-small" variant="tonal"
+              @click="cronCfgEdit.cronExpression = p.expr">{{ p.label }}</v-chip>
+          </div>
+
+          <div class="d-flex align-center ga-2 mb-2">
+            <v-text-field v-model="cronNewQuery" label="เพิ่ม query" variant="outlined" density="compact" hide-details
+              style="flex:1" @keyup.enter="addCronQuery" />
+            <v-btn size="small" variant="tonal" color="secondary" @click="addCronQuery">เพิ่ม</v-btn>
+          </div>
+          <div v-if="cronCfgEdit.queries.length > 0" class="d-flex flex-wrap ga-1 mb-3">
+            <v-chip v-for="(q, qi) in cronCfgEdit.queries" :key="q" size="small" closable
+              @click:close="cronCfgEdit.queries.splice(qi, 1)">{{ q }}</v-chip>
+          </div>
+          <p v-else class="text-caption text-medium-emphasis mb-3">ยังไม่มี query — cron จะไม่ทำงานจนกว่าจะเพิ่ม</p>
+
+          <v-row dense>
+            <v-col cols="6">
+              <v-text-field v-model.number="cronCfgEdit.maxSources" label="จำนวน source" type="number" min="1"
+                variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col cols="6">
+              <v-combobox v-model="cronCfgEdit.itemsPerSource" :items="[1, 3, 5, 10]" label="จำนวนชิ้น/source"
+                variant="outlined" density="compact" hide-details :return-object="false" type="number" />
+            </v-col>
+          </v-row>
+
+          <template v-if="cronRunsForTarget.length > 0">
+            <v-divider class="my-3" />
+            <p class="text-caption text-medium-emphasis mb-1">ประวัติการรันล่าสุด</p>
+            <div class="d-flex flex-column ga-1" style="max-height:140px; overflow:auto">
+              <div v-for="r in cronRunsForTarget" :key="r.runId" class="text-caption d-flex align-center ga-1">
+                <v-icon :color="r.error ? 'error' : 'success'" size="12">{{ r.error ? 'mdi-alert-circle' :
+                  'mdi-check-circle' }}</v-icon>
+                <span>{{ new Date(r.timestamp).toLocaleString('th-TH') }}</span>
+                <span class="text-medium-emphasis">· {{ r.sourceCount }} source</span>
+              </div>
+            </div>
+          </template>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-4">
+          <v-spacer />
+          <v-btn color="primary" size="small" class="text-none" @click="saveCronCfg">ตกลง</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -232,7 +333,7 @@
 
           <!-- Results table -->
           <v-data-table v-if="detailExtracted.length > 0" :headers="detailHeaders" :items="detailExtracted"
-            density="compact" class="text-body-2" style="flex:1">
+            density="compact" class="" style="flex:1">
             <template #[`item._screenshot`]="{ item }">
               <ScreenshotImg :src="item._screenshot" thumbnail class="my-1" />
             </template>
@@ -249,9 +350,17 @@
 
 <script setup lang="ts">
 import { SOURCE_CFG_DEFAULTS, type SourceCfg } from '~/stores/globalConfig';
+import { DEFAULT_CATEGORY_RUN_CONFIG, type CategoryRunConfig } from '~/stores/categoryConfig';
+import { DEFAULT_CRON_CONFIG } from '#shared/utils/cronConfig';
+import type { CronCategoryConfig } from '#shared/types/cronConfig';
 
 const cfgStore = useSourceConfigStore();
+const catCfgStore = useCategoryConfigStore();
+const cronCfgStore = useCronConfigStore();
 const groupsStore = useSearchGroupsStore();
+
+cronCfgStore.load();
+cronCfgStore.loadRuns();
 
 const { groups } = storeToRefs(groupsStore);
 
@@ -276,6 +385,67 @@ function openSrcCfg(name: string) {
 function saveSrcCfg() {
   cfgStore.setSourceCfg(srcCfgTarget.value, { ...srcCfgEdit, clip: { ...srcCfgEdit.clip } });
   srcCfgOpen.value = false;
+}
+
+// ── Per-category config dialog ─────────────────────────────────────────────────
+const catCfgOpen = ref(false);
+const catCfgTarget = ref('');
+const catCfgEdit = reactive<CategoryRunConfig>({ ...DEFAULT_CATEGORY_RUN_CONFIG });
+
+function openCatCfg(label: string) {
+  catCfgTarget.value = label;
+  Object.assign(catCfgEdit, catCfgStore.getCategoryCfg(label));
+  catCfgOpen.value = true;
+}
+
+function saveCatCfg() {
+  catCfgStore.setCategoryCfg(catCfgTarget.value, { ...catCfgEdit });
+  catCfgOpen.value = false;
+}
+
+// ── Cron config dialog ─────────────────────────────────────────────────────────
+const cronCfgOpen = ref(false);
+const cronCfgTarget = ref('');
+const cronCfgEdit = reactive<CronCategoryConfig>({ ...DEFAULT_CRON_CONFIG, queries: [] });
+const cronNewQuery = ref('');
+const cronPresets = [
+  { label: 'ทุกวัน 08:00', expr: '0 8 * * *' },
+  { label: 'ทุก 6 ชม.', expr: '0 */6 * * *' },
+  { label: 'ทุกชั่วโมง', expr: '0 * * * *' },
+  { label: 'ทุกวันจันทร์ 08:00', expr: '0 8 * * 1' },
+];
+
+const cronRunsForTarget = computed(() =>
+  cronCfgStore.runs.filter(r => r.label === cronCfgTarget.value).slice(0, 10)
+);
+
+function openCronCfg(label: string) {
+  cronCfgTarget.value = label;
+  const existing = cronCfgStore.getCronCfg(label);
+  Object.assign(cronCfgEdit, existing, { queries: [...existing.queries] });
+  cronCfgOpen.value = true;
+}
+
+function addCronQuery() {
+  const q = cronNewQuery.value.trim();
+  if (!q || cronCfgEdit.queries.includes(q)) return;
+  cronCfgEdit.queries.push(q);
+  cronNewQuery.value = '';
+}
+
+async function saveCronCfg() {
+  await cronCfgStore.setCronCfg(cronCfgTarget.value, { ...cronCfgEdit, queries: [...cronCfgEdit.queries] });
+  cronCfgOpen.value = false;
+}
+
+// getCfg ที่ให้กับ runGroup: ใช้ per-source override ถ้ามี ไม่งั้น fallback เป็น itemsPerSource ของหมวด
+function getSrcCfgForGroup(grp: any) {
+  const catCfg = catCfgStore.getCategoryCfg(grp.label);
+  return (srcName: string) => {
+    const cfg = cfgStore.getSourceCfg(srcName);
+    if (!cfgStore.hasCustomCfg(srcName)) return { ...cfg, limit: catCfg.itemsPerSource };
+    return cfg;
+  };
 }
 
 // ── Source detail dialog ───────────────────────────────────────────────────────

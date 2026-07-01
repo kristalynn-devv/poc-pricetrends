@@ -3,7 +3,7 @@
     <v-row class="mb-4">
       <v-col>
         <h1 class="text-h4 font-weight-bold">System Logs</h1>
-        <p class="text-body-2 text-medium-emphasis mt-1">บันทึกกิจกรรมและสรุปรายวัน</p>
+        <p class=" text-medium-emphasis mt-1">บันทึกกิจกรรมและสรุปรายวัน</p>
       </v-col>
       <v-col cols="auto" class="d-flex ga-1">
         <v-btn variant="text" prepend-icon="mdi-table-eye" to="/entries" size="small">รายการข้อมูล</v-btn>
@@ -161,7 +161,7 @@
                     'error' }}</v-chip>
                 </template>
                 <template #title>
-                  <span class="text-error text-body-2">{{ err.error }}</span>
+                  <span class="text-error ">{{ err.error }}</span>
                   <v-chip v-if="err.searchQuery" size="x-small" variant="tonal" class="ml-2">🔍 {{ err.searchQuery
                   }}</v-chip>
                 </template>
@@ -209,7 +209,7 @@
 
       <v-card rounded="lg">
         <v-data-table :headers="entryHeaders" :items="filteredEntries" density="compact" :items-per-page="25"
-          hover class="text-body-2 log-data-table" @click:row="(_: any, { item }: any) => store.openLogsDetail(item)">
+          hover class=" log-data-table" @click:row="(_: any, { item }: any) => store.openLogsDetail(item)">
           <template #[`item.timestamp`]="{ item }">
             <span class="text-caption">{{ formatTime(item.timestamp) }}</span>
           </template>
@@ -306,7 +306,7 @@ function formatTime(iso: string) {
 function errorColor(type: string | null) {
   const map: Record<string, string> = {
     timeout: 'warning', screenshot: 'error', extraction: 'orange',
-    parse: 'purple', config: 'red',
+    parse: 'purple', config: 'red', notfound: 'grey',
   };
   return map[type ?? ''] ?? 'error';
 }

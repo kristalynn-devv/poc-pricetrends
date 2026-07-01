@@ -1,4 +1,5 @@
 import type { BatchSummary, ItemResult } from './item'
+import type { LogErrorType } from './log'
 
 export interface StreamLogEvent {
   type: 'log'
@@ -22,6 +23,7 @@ export interface StreamDoneEvent {
   query?: string
   summary?: BatchSummary
   error?: string
+  errorType?: LogErrorType
 }
 
 export type StreamEvent =

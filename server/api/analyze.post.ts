@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog } from '../utils/logger'
+import { apiError, classifyError } from '../utils/errors'
 import { extractDomain } from '#shared/utils/domain'
 import { persistExtraction } from '../utils/persistExtraction'
 import type { LogEntry } from '#shared/types/log'
@@ -51,7 +52,7 @@ export default defineEventHandler(async (event) => {
   }>(event)
   const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(configRaw))
 
-  if (!url) throw createError({ statusCode: 400, message: 'url required' })
+  if (!url) throw apiError(400, 'config', 'url required')
 
   const config = useRuntimeConfig()
   const apiKey = config.geminiApiKey
@@ -62,7 +63,7 @@ export default defineEventHandler(async (event) => {
       error: 'GEMINI_API_KEY not configured', errorType: 'config',
     }
     await appendLog(logEntry).catch(() => {})
-    throw createError({ statusCode: 500, message: 'GEMINI_API_KEY not configured' })
+    throw apiError(500, 'config', 'GEMINI_API_KEY not configured')
   }
 
   const startedAt = Date.now()
@@ -89,15 +90,14 @@ export default defineEventHandler(async (event) => {
     const page = await context.newPage()
     try {
       await page.goto(url, { waitUntil: 'load', timeout: 30000 })
-    } catch (err: any) {
-      const isTimeout = err?.message?.includes('timeout') || err?.name === 'TimeoutError'
+    } catch (err) {
+      const { errorType, message } = classifyError(err, 'screenshot')
       await appendLog({
         timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
         durationMs: Date.now() - startedAt, httpStatus: 504, screenshotFile: null,
-        error: err?.message ?? 'Page load failed',
-        errorType: isTimeout ? 'timeout' : 'screenshot',
+        error: message, errorType,
       }).catch(() => {})
-      throw createError({ statusCode: 504, message: isTimeout ? 'Page load timed out' : 'Page load failed' })
+      throw apiError(504, errorType, errorType === 'timeout' ? 'Page load timed out' : 'Page load failed')
     }
     await page.waitForTimeout(3000)
     for (const selector of [
@@ -123,12 +123,13 @@ export default defineEventHandler(async (event) => {
     await writeFile(join(screenshotDir, filename), buffer)
   } catch (err: any) {
     if (!err?.statusCode) {
+      const { message } = classifyError(err, 'screenshot')
       await appendLog({
         timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
         durationMs: Date.now() - startedAt, httpStatus: 500, screenshotFile: null,
-        error: err?.message ?? 'Screenshot failed', errorType: 'screenshot',
+        error: message, errorType: 'screenshot',
       }).catch(() => {})
-      throw createError({ statusCode: 500, message: 'Screenshot failed' })
+      throw apiError(500, 'screenshot', 'Screenshot failed')
     }
     throw err
   } finally {
@@ -162,13 +163,14 @@ ${schemaText}
   let geminiOutputTokens: number | undefined
   try {
     ;({ text, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight } = await callGemini(model, prompt, base64, mimeType))
-  } catch (err: any) {
+  } catch (err) {
+    const { errorType, message } = classifyError(err, 'extraction')
     await appendLog({
       timestamp: new Date().toISOString(), source: extractDomain(url), url, categoryId: categoryId ?? null,
       durationMs: Date.now() - startedAt, httpStatus: 502, screenshotFile: filename,
-      error: err?.message ?? 'Gemini extraction failed', errorType: 'extraction',
+      error: message, errorType,
     }).catch(() => {})
-    throw createError({ statusCode: 502, message: 'Gemini extraction failed' })
+    throw apiError(502, errorType, 'Gemini extraction failed')
   }
 
   try {

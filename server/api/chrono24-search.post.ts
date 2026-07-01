@@ -2,6 +2,7 @@ import type { ItemResult } from '#shared/types/item'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog } from '../utils/logger'
+import { apiError, classifyError } from '../utils/errors'
 import { extractDomain } from '#shared/utils/domain'
 import { persistExtraction } from '../utils/persistExtraction'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
@@ -32,11 +33,11 @@ export default defineEventHandler(async (event) => {
     query: string; categoryId?: string; template?: Record<string, string>; limit?: number; screenshotConfig?: import('#shared/types/screenshot').ScreenshotConfig; roundId?: string}>(event)
   const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(configRaw))
 
-  if (!query?.trim()) throw createError({ statusCode: 400, message: 'query required' })
+  if (!query?.trim()) throw apiError(400, 'config', 'query required')
 
   const config = useRuntimeConfig()
   const apiKey = config.geminiApiKey
-  if (!apiKey) throw createError({ statusCode: 500, message: 'GEMINI_API_KEY not configured' })
+  if (!apiKey) throw apiError(500, 'config', 'GEMINI_API_KEY not configured')
 
   const schemaText = buildSchema(categoryId, template)
   const extractPrompt = buildExtractPrompt({ siteName: 'chrono24.com', categoryId, schemaText, mode: 'listing' })
@@ -95,9 +96,9 @@ export default defineEventHandler(async (event) => {
           await ctx.close()
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+        const { errorType, message: msg } = classifyError(err, 'screenshot')
         emit('error', `Search page failed`, { msg })
-        send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg })
+        send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg, errorType })
         close()
         await browser.close()
         return
@@ -105,7 +106,8 @@ export default defineEventHandler(async (event) => {
 
       if (listingUrls.length === 0) {
         emit('warn', 'No listing URLs found - may be blocked')
-        send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No listing URLs found' })
+        await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url: searchUrl, categoryId, searchQuery: query, roundId, durationMs: 0, httpStatus: 404, screenshotFile: null, error: 'No listing URLs found', errorType: 'notfound' }).catch(() => {})
+        send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No listing URLs found', errorType: 'notfound' })
         close()
         await browser.close()
         return
@@ -141,11 +143,10 @@ export default defineEventHandler(async (event) => {
             await ctx.close()
           }
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
+          const { errorType, message: msg } = classifyError(err, 'screenshot')
           result.error = `screenshot: ${msg}`
           emit('error', `[${i + 1}] Screenshot failed`, { msg })
-          const isTimeout = msg.includes('timeout') || msg.includes('Timeout')
-          await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: isTimeout ? 504 : 500, screenshotFile: null, error: msg, errorType: isTimeout ? 'timeout' : 'screenshot' }).catch(() => {})
+          await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: errorType === 'timeout' ? 504 : 500, screenshotFile: null, error: msg, errorType }).catch(() => {})
           send((({ base64: _b, ...r }) => ({ type: 'result', ...r }))(result))
           return
         }
@@ -170,10 +171,10 @@ export default defineEventHandler(async (event) => {
             await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse' }).catch(() => {})
           }
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
+          const { errorType, message: msg } = classifyError(err, 'extraction')
           result.error = (result.error ?? '') + `extract: ${msg}`
           emit('error', `[${i + 1}] Gemini failed`, { msg })
-          await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 502, screenshotFile: filename, error: msg, errorType: 'extraction' }).catch(() => {})
+          await appendLog({ timestamp: new Date().toISOString(), source: 'chrono24', url, categoryId, searchQuery: query, roundId, durationMs: Date.now() - itemStart, httpStatus: 502, screenshotFile: filename, error: msg, errorType }).catch(() => {})
         }
 
         send((({ base64: _b, ...r }) => ({ type: 'result', ...r }))(result))
@@ -185,9 +186,9 @@ export default defineEventHandler(async (event) => {
       emit('info', `Done`, summary)
       send({ type: 'done', query, summary })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const { errorType, message: msg } = classifyError(err, 'screenshot')
       emit('error', 'Unexpected error', { msg })
-      send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg })
+      send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg, errorType })
       await browser.close().catch(() => {})
     } finally {
       close()

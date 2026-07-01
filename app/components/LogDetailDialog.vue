@@ -128,6 +128,7 @@ function errorColor(type: string | null) {
     extraction: 'orange',
     parse: 'purple',
     config: 'red',
+    notfound: 'grey',
   }
   return map[type ?? ''] ?? 'error'
 }

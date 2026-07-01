@@ -4,6 +4,7 @@ import type { ItemResult } from '#shared/types/item'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog } from '../utils/logger'
+import { apiError, classifyError } from '../utils/errors'
 import { persistExtraction } from '../utils/persistExtraction'
 import type { ScreenshotConfig } from '#shared/types/screenshot'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
@@ -87,11 +88,11 @@ export default defineEventHandler(async (event) => {
     query: string; categoryId?: string; template?: Record<string, string>; limit?: number; screenshotConfig?: import('#shared/types/screenshot').ScreenshotConfig; roundId?: string}>(event)
   const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(configRaw))
 
-  if (!query?.trim()) throw createError({ statusCode: 400, message: 'query required' })
+  if (!query?.trim()) throw apiError(400, 'config', 'query required')
 
   const config = useRuntimeConfig()
   const apiKey = config.geminiApiKey
-  if (!apiKey) throw createError({ statusCode: 500, message: 'GEMINI_API_KEY not configured' })
+  if (!apiKey) throw apiError(500, 'config', 'GEMINI_API_KEY not configured')
 
   const schemaText = buildSchema(categoryId, template)
   const extractPrompt = buildExtractPrompt({ siteName: 'auctionhouse.co.th', categoryId, schemaText, mode: 'detail' })
@@ -242,7 +243,8 @@ export default defineEventHandler(async (event) => {
             const fname = buildScreenshotFilename(categoryId, 'AUC', 'searchpage')
             await writeFile(join(screenshotDir, fname), buf)
             send({ type: 'searchpage', base64: b64 })
-            send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No listing URLs found — bot protection may be active' })
+            await appendLog({ timestamp: new Date().toISOString(), source: 'auctionhouse', url: searchUrl, categoryId, searchQuery: query, roundId, durationMs: 0, httpStatus: 404, screenshotFile: fname, error: 'No listing URLs found — bot protection may be active', errorType: 'notfound' }).catch(() => {})
+            send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No listing URLs found — bot protection may be active', errorType: 'notfound' })
             close()
             await ctx.close().catch(() => {})
             return
@@ -251,9 +253,9 @@ export default defineEventHandler(async (event) => {
           await page.close().catch(() => {})
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+        const { errorType, message: msg } = classifyError(err, 'screenshot')
         emit('error', `Search page failed`, { msg })
-        send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg })
+        send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg, errorType })
         close()
         await ctx.close().catch(() => {})
         return
@@ -313,11 +315,10 @@ await persistExtraction({
             await page.close()
           }
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
+          const { errorType, message: msg } = classifyError(err, 'screenshot')
           result.error = `extract: ${msg}`
           emit('error', `[${i + 1}] Failed`, { msg })
-          const isTimeout = msg.includes('timeout') || msg.includes('Timeout')
-          await appendLog({ timestamp: new Date().toISOString(), source: 'auctionhouse', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: isTimeout ? 504 : 500, screenshotFile: null, error: msg, errorType: isTimeout ? 'timeout' : 'screenshot' }).catch(() => {})
+          await appendLog({ timestamp: new Date().toISOString(), source: 'auctionhouse', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: errorType === 'timeout' ? 504 : 500, screenshotFile: null, error: msg, errorType }).catch(() => {})
         }
 
         send((({ base64: _b, ...r }) => ({ type: 'result', ...r }))(result))
@@ -330,9 +331,9 @@ await persistExtraction({
       emit('info', `Done`, summary)
       send({ type: 'done', query, summary })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const { errorType, message: msg } = classifyError(err, 'screenshot')
       emit('error', 'Unexpected error', { msg })
-      send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg })
+      send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg, errorType })
       await ctx.close().catch(() => {})
       await fallbackBrowser?.close().catch(() => {})
     } finally {

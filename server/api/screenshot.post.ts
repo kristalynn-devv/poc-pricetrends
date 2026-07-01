@@ -4,13 +4,14 @@ import { join } from 'node:path'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
 import { takeScreenshot } from '../utils/browserUtils'
 import { buildUrlScreenshotFilename } from '../utils/filename'
+import { apiError, classifyError } from '../utils/errors'
 
 export default defineEventHandler(async (event) => {
   const { url, categoryId, config: configRaw } = await readBody<{
     url: string; categoryId?: string; config?: import('#shared/types/screenshot').ScreenshotConfig
   }>(event)
   const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(configRaw))
-  if (!url) throw createError({ statusCode: 400, message: 'url required' })
+  if (!url) throw apiError(400, 'config', 'url required')
 
   const browser = await chromium.launch({
     headless: true,
@@ -57,6 +58,9 @@ export default defineEventHandler(async (event) => {
     await mkdir(screenshotDir, { recursive: true })
     await writeFile(join(screenshotDir, filename), buffer)
     return { filename, mimeType: 'image/jpeg' }
+  } catch (err) {
+    const { errorType, message } = classifyError(err, 'screenshot')
+    throw apiError(errorType === 'timeout' ? 504 : 500, errorType, message)
   } finally {
     await browser.close()
   }

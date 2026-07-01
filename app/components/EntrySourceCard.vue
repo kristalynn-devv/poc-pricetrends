@@ -1,7 +1,7 @@
 <template>
   <v-card rounded="lg" border flat>
     <v-card-item class="">
-      <v-card-title class="text-body-1 font-weight-bold">
+      <v-card-title class=" font-weight-bold">
         {{ group.source }}
       </v-card-title>
 
@@ -33,7 +33,7 @@
       </v-col>
       <v-col cols="12" :sm="group.screenshotFile ? true : 12">
         <v-data-table :headers="tableHeaders(group.items, group.categoryId ?? undefined)" :items="group.items"
-          density="comfortable" class="text-body-2" hide-default-footer :items-per-page="-1" hover>
+          density="comfortable" class="" hide-default-footer :items-per-page="-1" hover>
           <template #[`item.price`]="{ value }">
             <span class="font-weight-bold text-primary">{{ formatPrice(value) }}</span>
           </template>

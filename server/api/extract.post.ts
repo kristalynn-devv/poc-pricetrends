@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { apiError, classifyError } from '../utils/errors'
 
 /** Fields per category ID */
 const CATEGORY_FIELDS: Record<string, string[]> = {
@@ -39,11 +40,11 @@ export default defineEventHandler(async (event) => {
     template?: Record<string, string>
   }>(event)
 
-  if (!base64) throw createError({ statusCode: 400, message: 'base64 image required' })
+  if (!base64) throw apiError(400, 'config', 'base64 image required')
 
   const config = useRuntimeConfig()
   const apiKey = config.geminiApiKey
-  if (!apiKey) throw createError({ statusCode: 500, message: 'GEMINI_API_KEY not configured' })
+  if (!apiKey) throw apiError(500, 'config', 'GEMINI_API_KEY not configured')
 
   // Build schema from categoryId or custom template
   let fields: Record<string, string>
@@ -70,10 +71,16 @@ ${schemaText}
   const genAI = new GoogleGenerativeAI(apiKey)
   const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
 
-  const result = await model.generateContent([
-    prompt,
-    { inlineData: { data: base64, mimeType: mimeType ?? 'image/jpeg' } },
-  ])
+  let result
+  try {
+    result = await model.generateContent([
+      prompt,
+      { inlineData: { data: base64, mimeType: mimeType ?? 'image/jpeg' } },
+    ])
+  } catch (err) {
+    const { errorType, message } = classifyError(err, 'extraction')
+    throw apiError(502, errorType, message)
+  }
 
   const text = result.response.text().trim()
   try {

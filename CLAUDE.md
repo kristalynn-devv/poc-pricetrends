@@ -35,6 +35,11 @@ pnpm preview
 - `GET /api/results/entries?date=YYYYMMDD&screenshotFile=` — single result by screenshot filename
 - `GET /api/logs/entries?date=YYYYMMDD` — raw JSONL log entries for a given day
 - `GET /api/logs/summary?date=YYYYMMDD` — daily summary (total/success/failed, bySource, byCategory, avgDuration)
+- `POST /api/backtest` — รัน backtest จริงกับทุก source (หรือ 1 source ถ้าส่ง `{ source }`) ด้วย query ตัวอย่างต่อหมวด, บันทึกผลที่ `output/backtest/YYYYMMDD.jsonl`, คืน `BacktestRun`
+- `GET /api/backtest` — อ่านผล backtest รันล่าสุด
+- `GET /api/cron-config` — cron config ทุกหมวด (merge กับ default ถ้ายังไม่เคยตั้งค่า)
+- `POST /api/cron-config` — บันทึก cron config ของ 1 หมวด (`{ label, config }`) แล้ว reschedule ทันที
+- `GET /api/cron-runs` — ประวัติการรัน cron ล่าสุด (30 รายการ, ข้าม `output/cron-runs/`)
 
 **Batch-search routes** — รับ `{ query, categoryId, limit, screenshotConfig? }` แล้ว scrape listing page → ถ่ายแต่ละ item + Gemini extract → `{ results[], logs[] }`
 
@@ -86,6 +91,30 @@ Source list ทั้งหมดนิยามใน `index.vue` (`categoryGro
   - **frontend** → `useCategoryFields.ts` composable (สำหรับ UI required/optional fields)
   - อย่านิยาม field list ซ้ำในที่อื่น
 
+**Category run config** (จำนวน source และจำนวนชิ้น/source ต่อหมวด):
+- `shared/types/categoryConfig.ts` — `CategoryRunConfig { maxSources, itemsPerSource }`
+- `shared/utils/categoryConfig.ts` — `DEFAULT_CATEGORY_RUN_CONFIG` (maxSources=3, itemsPerSource=1) + `mergeCategoryRunConfig()` helper กลาง (pattern เดียวกับ `screenshotConfig.ts`)
+- `app/stores/categoryConfig.ts` — `useCategoryConfigStore()`: persist ต่อหมวด (key = `grp.label`) ใน localStorage (`categoryRunConfigs_v1`) เหมือน `useSourceConfigStore`
+- UI: ปุ่มเฟือง (⚙ `mdi-cog-outline`) ที่หัว panel แต่ละหมวดใน `index.vue` เปิด dialog ตั้ง `maxSources` (จำกัดจำนวน source ที่ดึงต่อรอบ — แทนค่าคงที่ `TARGET_HITS`/`CONCURRENCY` เดิมใน `runGroup()`) และ `itemsPerSource` (ค่า default ของ `limit` ต่อ source เมื่อ source นั้นไม่มี per-source override จาก `useSourceConfigStore`)
+- `searchGroups.ts` → `runGroup(grp, getCfg, categoryCfg)` รับ `CategoryRunConfig` เป็น param ที่ 3 (default `DEFAULT_CATEGORY_RUN_CONFIG`)
+
+**Category groups** (`shared/constants/categoryGroups.ts`):
+- `CATEGORY_GROUPS` — **single source of truth** ของ label/ids/sources ต่อหมวด (ย้ายออกจาก `searchGroups.ts` เดิม) ใช้ร่วมกันทั้ง client (`useSearchGroupsStore().init()`) และ server (`cronRunner.ts`)
+- เพิ่ม source ใหม่แก้ที่นี่ที่เดียว (ไม่ต้องแก้ `index.vue`/`searchGroups.ts` อีก) + route file
+
+**Cron (รันค้นหาอัตโนมัติตามตารางเวลา):**
+- กลไก: `node-cron` ฝังใน Nitro server plugin — รันอยู่ใน process เดียวกับ `pnpm dev`/`preview` เท่านั้น (ไม่ใช่ Windows Task Scheduler แยกต่างหาก, server ต้องเปิดค้างไว้ถึงจะ trigger)
+- `shared/types/cronConfig.ts` — `CronCategoryConfig { enabled, cronExpression, queries, maxSources, itemsPerSource }`
+- `shared/utils/cronConfig.ts` — `DEFAULT_CRON_CONFIG` (disabled, `0 8 * * *`) + `mergeCronConfig()` + `isValidCronExpression()`
+- `server/utils/cronConfigStore.ts` — persist cron config ต่อหมวดที่ `output/cron-config.json`
+- `server/utils/cronRunner.ts` — `runCategoryCron(label, cfg, baseUrl)`: เรียก search route จริงของแต่ละ source (จำกัดที่ `cfg.maxSources`) × ทุก query ใน `cfg.queries`, จำนวนพร้อมกัน 1–3 — แต่ละ route persist ผลลัพธ์ของตัวเองอยู่แล้ว (`persistExtraction`), cronRunner แค่ drain NDJSON stream ให้ครบ (pattern เดียวกับ `backtest.ts`)
+- `server/utils/cronRunStore.ts` — บันทึกประวัติการรัน (`CronRunLogEntry`) ที่ `output/cron-runs/YYYYMMDD.jsonl`
+- `server/utils/cronScheduler.ts` — `scheduleCategory(label)` (register/reschedule 1 หมวด) + `initCronScheduler()` (เรียกตอน server start จาก `server/plugins/cron.ts`)
+- `server/api/cron-config.get.ts` / `.post.ts` — อ่าน/บันทึก config ต่อหมวด, POST เรียก `scheduleCategory()` ทันทีเพื่อ reschedule โดยไม่ต้อง restart server
+- `server/api/cron-runs.get.ts` — ประวัติการรันล่าสุด
+- UI: ปุ่มนาฬิกา (🕐 `mdi-clock-outline`) ที่หัว panel แต่ละหมวดใน `index.vue` เปิด dialog ตั้ง enable/cron expression/query list/maxSources/itemsPerSource + แสดงประวัติรันล่าสุดของหมวดนั้น
+- `app/stores/cronConfig.ts` — `useCronConfigStore()`: fetch/save ผ่าน API (ไม่ใช่ localStorage เพราะ cron ต้องรันฝั่ง server แม้ไม่มี browser เปิดอยู่)
+
 **Screenshot config** (`server/utils/screenshotConfig.ts`):
 - ค่า default: viewport 1920×1080, fullPage=true, quality=90
 - ปรับได้จาก UI (ปุ่ม ⚙ หน้าหลัก) — ส่งมาใน request body เป็น `screenshotConfig` object
@@ -116,12 +145,18 @@ Source list ทั้งหมดนิยามใน `index.vue` (`categoryGro
 - `output/screenshots/` — รูป JPG
 - `output/results/YYYYMMDD.jsonl` — **แหล่งเดียว** ของข้อมูลสินค้าที่ extract ได้ (1 entry ต่อ screenshot)
 - `output/logs/YYYYMMDD.jsonl` — operational log (duration, error, tokens, `screenshotFile` pointer)
+- `output/backtest/YYYYMMDD.jsonl` — ผล backtest ต่อรัน (1 บรรทัด = 1 `BacktestRun` ทั้งชุด)
+- `output/cron-config.json` — cron config ต่อหมวด (enable/cron expression/queries/maxSources/itemsPerSource)
+- `output/cron-runs/YYYYMMDD.jsonl` — ประวัติการรัน cron ต่อหมวด (1 บรรทัด = 1 `CronRunLogEntry`)
 
 **Data utilities:**
 - `server/utils/sanitize.ts` — `sanitizeItems()`: coerce price เป็น integer, strip commas
 - `server/utils/persistExtraction.ts` — `persistExtraction()`: บันทึก `appendResult` + `appendLog` success ในครั้งเดียว
 - `server/utils/resultsStore.ts` — `appendResult()` / `readDailyResults()`: เขียน/อ่าน `output/results/YYYYMMDD.jsonl`
   - `ResultEntry` มี `roundId?` (batch run ID) และ `searchQuery?` สำหรับ group ผลลัพธ์
+- `server/utils/backtest.ts` — `runSourceBacktest()` / `runAllBacktests()`: เรียก search route จริงของแต่ละ source (query ตัวอย่างต่อหมวดใน `BACKTEST_QUERIES`, `limit: 1`) แล้วอ่าน NDJSON stream เพื่อสรุป pass/fail (เจอสินค้า + ถ่ายภาพได้)
+- `server/utils/backtestStore.ts` — `appendBacktestRun()` / `readLatestBacktestRun()`: เขียน/อ่าน `output/backtest/YYYYMMDD.jsonl`
+- หน้า `/backtest` (`app/pages/backtest.vue`) — ปุ่มรัน backtest ทุก source + ตารางผล pass/fail ต่อ source (ตรวจ+รายงานเท่านั้น ไม่แก้ไข code อัตโนมัติ)
 
 **File naming convention:** `[YYYYMMDD]_[HHmmss]_[CategoryID]_[SourceCode][_{suffix}].jpg`
 - บันทึกที่ `output/screenshots/`

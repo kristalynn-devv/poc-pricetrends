@@ -1,5 +1,6 @@
 import type { ItemResult } from '#shared/types/item'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
+import { apiError, classifyError } from '../utils/errors'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog } from '../utils/logger'
@@ -21,11 +22,11 @@ export default defineEventHandler(async (event) => {
     query: string; categoryId?: string; template?: Record<string, string>; limit?: number; screenshotConfig?: import('#shared/types/screenshot').ScreenshotConfig; roundId?: string}>(event)
   const screenshotCfg = buildScreenshotOptions(mergeScreenshotConfig(configRaw))
 
-  if (!query?.trim()) throw createError({ statusCode: 400, message: 'query required' })
+  if (!query?.trim()) throw apiError(400, 'config', 'query required')
 
   const config = useRuntimeConfig()
   const apiKey = config.geminiApiKey
-  if (!apiKey) throw createError({ statusCode: 500, message: 'GEMINI_API_KEY not configured' })
+  if (!apiKey) throw apiError(500, 'config', 'GEMINI_API_KEY not configured')
 
   const schemaText = buildSchema(categoryId, template)
   const extractPrompt = buildExtractPrompt({ siteName: 'kaidee.com', categoryId, schemaText, mode: 'listing' })
@@ -77,8 +78,8 @@ export default defineEventHandler(async (event) => {
 
         if (detailUrls.length === 0) {
           emit('warn', 'No product links found')
-          await appendLog({ timestamp: new Date().toISOString(), source: 'kaidee', url: searchUrl, categoryId, searchQuery: query, durationMs: 0, httpStatus: 404, screenshotFile: null, error: 'No product links found', errorType: null }).catch(() => {})
-          send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No product links found' })
+          await appendLog({ timestamp: new Date().toISOString(), source: 'kaidee', url: searchUrl, categoryId, searchQuery: query, durationMs: 0, httpStatus: 404, screenshotFile: null, error: 'No product links found', errorType: 'notfound' }).catch(() => {})
+          send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: 'No product links found', errorType: 'notfound' })
                     await ctx.close()
           await browser.close()
           return
@@ -126,17 +127,16 @@ await persistExtraction({
                 await appendLog({ timestamp: new Date().toISOString(), source: 'kaidee', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 200, screenshotFile: filename, error: `JSON parse failed: ${text.slice(0, 120)}`, errorType: 'parse' }).catch(() => {})
               }
             } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err)
+              const { errorType, message: msg } = classifyError(err, 'extraction')
               result.error = `extract: ${msg}`
               emit('error', `[${i + 1}] Gemini failed`, { msg })
-              await appendLog({ timestamp: new Date().toISOString(), source: 'kaidee', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 502, screenshotFile: filename, error: msg, errorType: 'extraction' }).catch(() => {})
+              await appendLog({ timestamp: new Date().toISOString(), source: 'kaidee', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: 502, screenshotFile: filename, error: msg, errorType }).catch(() => {})
             }
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err)
+            const { errorType, message: msg } = classifyError(err, 'screenshot')
             result.error = `screenshot: ${msg}`
             emit('error', `[${i + 1}] Failed`, { msg })
-            const isTimeout = msg.includes('timeout') || msg.includes('Timeout')
-            await appendLog({ timestamp: new Date().toISOString(), source: 'kaidee', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: isTimeout ? 504 : 500, screenshotFile: null, error: msg, errorType: isTimeout ? 'timeout' : 'screenshot' }).catch(() => {})
+            await appendLog({ timestamp: new Date().toISOString(), source: 'kaidee', url, categoryId, searchQuery: query, durationMs: Date.now() - itemStart, httpStatus: errorType === 'timeout' ? 504 : 500, screenshotFile: null, error: msg, errorType }).catch(() => {})
           } finally {
             await itemCtx.close()
           }
@@ -155,9 +155,9 @@ await persistExtraction({
       emit('info', `Done`, summary)
       send({ type: 'done', query, summary })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const { errorType, message: msg } = classifyError(err, 'screenshot')
       emit('error', 'Unexpected error', { msg })
-      send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg })
+      send({ type: 'done', query, summary: { total: 0, screenshotOk: 0, extractOk: 0 }, error: msg, errorType })
       await browser.close().catch(() => {})
     } finally {
       close()
