@@ -11,6 +11,10 @@ import {
   fetchCronConfig,
   saveCronConfig,
   fetchCronRuns,
+  fetchSourceConfig,
+  saveSourceConfig,
+  deleteSourceConfig,
+  migrateSourceConfig,
 } from '~/lib/api'
 
 /** Frontend API access — reads `NUXT_PUBLIC_API_BASE` for cross-origin backend. */
@@ -37,5 +41,9 @@ export function useApi() {
     fetchCronConfig: () => fetchCronConfig(apiBase.value),
     saveCronConfig: (label: string, config: Parameters<typeof saveCronConfig>[1]) => saveCronConfig(label, config, apiBase.value),
     fetchCronRuns: () => fetchCronRuns(apiBase.value),
+    fetchSourceConfig: () => fetchSourceConfig(apiBase.value),
+    saveSourceConfig: (name: string, config: Parameters<typeof saveSourceConfig>[1]) => saveSourceConfig(name, config, apiBase.value),
+    deleteSourceConfig: (name: string) => deleteSourceConfig(name, apiBase.value),
+    migrateSourceConfig: (configs: Parameters<typeof migrateSourceConfig>[0]) => migrateSourceConfig(configs, apiBase.value),
   }
 }

@@ -13,6 +13,8 @@ export const API_PATHS = {
   sourcecheckHistory: '/api/sourcecheck/history',
   cronConfig: '/api/cron-config',
   cronRuns: '/api/cron-runs',
+  sourceConfig: '/api/source-config',
+  sourceConfigMigrate: '/api/source-config/migrate',
 } as const
 
 export function screenshotPath(file: string): string {

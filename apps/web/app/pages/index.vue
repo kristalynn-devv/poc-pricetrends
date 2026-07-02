@@ -154,6 +154,7 @@ const groupsStore = useSearchGroupsStore();
 
 cronCfgStore.load();
 cronCfgStore.loadRuns();
+cfgStore.load();
 
 const { groups } = storeToRefs(groupsStore);
 

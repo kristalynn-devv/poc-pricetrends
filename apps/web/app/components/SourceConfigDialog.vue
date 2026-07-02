@@ -71,13 +71,13 @@ watch(() => [props.modelValue, props.target] as const, ([open, target]) => {
   Object.assign(edit.clip, existing.clip);
 }, { immediate: true });
 
-function save() {
-  cfgStore.setSourceCfg(props.target, { ...edit, clip: { ...edit.clip } });
+async function save() {
+  await cfgStore.setSourceCfg(props.target, { ...edit, clip: { ...edit.clip } });
   emit('update:modelValue', false);
 }
 
-function reset() {
-  cfgStore.resetSourceCfg(props.target);
+async function reset() {
+  await cfgStore.resetSourceCfg(props.target);
   emit('update:modelValue', false);
 }
 </script>

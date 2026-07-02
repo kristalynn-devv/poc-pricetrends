@@ -108,7 +108,7 @@ Source list ทั้งหมดนิยามใน `packages/shared/constant
 **Category run config** (จำนวน source และจำนวนชิ้น/source ต่อหมวด):
 - `packages/shared/types/categoryConfig.ts` — `CategoryRunConfig { maxSources, itemsPerSource }`
 - `packages/shared/utils/categoryConfig.ts` — `DEFAULT_CATEGORY_RUN_CONFIG` (maxSources=3, itemsPerSource=1) + `mergeCategoryRunConfig()` helper กลาง (pattern เดียวกับ `screenshotConfig.ts`)
-- `apps/web/app/stores/categoryConfig.ts` — `useCategoryConfigStore()`: persist ต่อหมวด (key = `grp.label`) ใน localStorage (`categoryRunConfigs_v1`) เหมือน `useSourceConfigStore`
+- `apps/web/app/stores/categoryConfig.ts` — `useCategoryConfigStore()`: persist ต่อหมวด (key = `grp.label`) ใน localStorage (`categoryRunConfigs_v1`) — ยังเป็น localStorage อยู่ (ไม่เหมือน `useSourceConfigStore` ที่ย้ายไปเก็บฝั่ง server แล้ว)
 - UI: ปุ่มเฟือง (⚙ `mdi-cog-outline`) ที่หัว panel แต่ละหมวดใน `index.vue` เปิด dialog ตั้ง `maxSources` (จำกัดจำนวน source ที่ดึงต่อรอบ — แทนค่าคงที่ `TARGET_HITS`/`CONCURRENCY` เดิมใน `runGroup()`) และ `itemsPerSource` (ค่า default ของ `limit` ต่อ source เมื่อ source นั้นไม่มี per-source override จาก `useSourceConfigStore`)
 - `searchGroups.ts` → `runGroup(grp, getCfg, categoryCfg)` รับ `CategoryRunConfig` เป็น param ที่ 3 (default `DEFAULT_CATEGORY_RUN_CONFIG`)
 
@@ -128,6 +128,14 @@ Source list ทั้งหมดนิยามใน `packages/shared/constant
 - `apps/api/server/api/cron-runs.get.ts` — ประวัติการรันล่าสุด
 - UI: ปุ่มนาฬิกา (🕐 `mdi-clock-outline`) ที่หัว panel แต่ละหมวดใน `index.vue` เปิด dialog ตั้ง enable/cron expression/query list/maxSources/itemsPerSource + แสดงประวัติรันล่าสุดของหมวดนั้น
 - `apps/web/app/stores/cronConfig.ts` — `useCronConfigStore()`: fetch/save ผ่าน API (ไม่ใช่ localStorage เพราะ cron ต้องรันฝั่ง server แม้ไม่มี browser เปิดอยู่)
+
+**Per-source screenshot/limit config** (viewport/quality/crop/limit ต่อ source — ปุ่มเฟือง `mdi-tune` ต่อแถวใน `index.vue`):
+- `packages/shared/types/sourceConfig.ts` — `SourceCfg { viewportWidth, viewportHeight, quality, cropHeight?, clip, limit }`
+- `packages/shared/utils/sourceConfig.ts` — `DEFAULT_SOURCE_CFG` + `mergeSourceConfig()`
+- `apps/api/server/utils/sourceConfigStore.ts` — persist ต่อ source ที่ `apps/api/output/source-config.json` (**server-side ไม่ใช่ localStorage แล้ว** — ย้ายมาเพื่อให้ค่าที่ตั้งไว้ไม่หายเมื่อย้ายเครื่อง/browser)
+- `apps/api/server/api/source-config.get.ts` / `.post.ts` / `.delete.ts` — อ่าน/บันทึก/reset config ต่อ source
+- `apps/api/server/api/source-config/migrate.post.ts` — one-time import จาก localStorage เดิม (key `sourceConfigs_v1`) เข้า server, merge แบบไม่ทับของที่ตั้งไว้ฝั่ง server อยู่แล้ว
+- `apps/web/app/stores/globalConfig.ts` — `useSourceConfigStore()`: fetch จาก API ตอน `load()`, แล้วรัน migration จาก legacy `localStorage` อัตโนมัติถ้ามีของเก่าค้างอยู่ (ไม่ทับ config ที่มีบน server แล้ว)
 
 **Screenshot config** (`apps/api/server/utils/screenshotConfig.ts`):
 - ค่า default: viewport 1920×1080, fullPage=true, quality=90

@@ -1,54 +1,61 @@
 import { defineStore } from 'pinia'
+import type { SourceConfigMap, SourceCfg } from '#shared/types/sourceConfig'
+import { DEFAULT_SOURCE_CFG } from '#shared/utils/sourceConfig'
 
-const STORAGE_KEY = 'sourceConfigs_v1'
+export type { SourceCfg } from '#shared/types/sourceConfig'
+export { DEFAULT_SOURCE_CFG as SOURCE_CFG_DEFAULTS } from '#shared/utils/sourceConfig'
 
-export interface SourceCfg {
-  viewportWidth: number
-  viewportHeight: number
-  quality: number
-  cropHeight?: number
-  clip: { enabled: boolean; x: number; y: number; width: number; height: number }
-  limit: number
-}
-
-export const SOURCE_CFG_DEFAULTS: SourceCfg = {
-  viewportWidth: 1920,
-  viewportHeight: 1080,
-  quality: 85,
-  cropHeight: undefined,
-  clip: { enabled: false, x: 0, y: 0, width: 1920, height: 1080 },
-  limit: 1,
-}
+/** Legacy per-browser storage — read once on load() to migrate into the server-side store, then left untouched. */
+const LEGACY_STORAGE_KEY = 'sourceConfigs_v1'
 
 export const useSourceConfigStore = defineStore('sourceConfig', () => {
-  function loadFromStorage(): Record<string, SourceCfg> {
+  const { fetchSourceConfig, saveSourceConfig, deleteSourceConfig, migrateSourceConfig } = useApi()
+
+  const configs = reactive<SourceConfigMap>({})
+  const loaded = ref(false)
+
+  function readLegacyStorage(): SourceConfigMap {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY)
+      const raw = localStorage.getItem(LEGACY_STORAGE_KEY)
       if (raw) return JSON.parse(raw)
     } catch {}
     return {}
   }
 
-  const configs = reactive<Record<string, SourceCfg>>(loadFromStorage())
+  async function load() {
+    if (loaded.value) return
+    loaded.value = true
+    try {
+      Object.assign(configs, await fetchSourceConfig())
+    } catch { /* ignore — server may not be reachable yet */ }
 
-  watch(configs, (val) => localStorage.setItem(STORAGE_KEY, JSON.stringify(val)), { deep: true })
+    // one-time import of settings from a previous per-browser install
+    const legacy = readLegacyStorage()
+    if (Object.keys(legacy).length > 0) {
+      try {
+        const merged = await migrateSourceConfig(legacy)
+        Object.assign(configs, merged)
+      } catch { /* ignore — retry next load */ }
+    }
+  }
 
   function getSourceCfg(name: string): SourceCfg {
-    return configs[name] ?? { ...SOURCE_CFG_DEFAULTS, clip: { ...SOURCE_CFG_DEFAULTS.clip } }
+    return configs[name] ?? { ...DEFAULT_SOURCE_CFG, clip: { ...DEFAULT_SOURCE_CFG.clip } }
   }
 
-  function setSourceCfg(name: string, val: SourceCfg) {
-    configs[name] = { ...val, clip: { ...val.clip } }
+  async function setSourceCfg(name: string, val: SourceCfg) {
+    const saved = await saveSourceConfig(name, { ...val, clip: { ...val.clip } })
+    configs[name] = saved
   }
 
-  function resetSourceCfg(name: string) {
+  async function resetSourceCfg(name: string) {
     delete configs[name]
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(configs))
+    await deleteSourceConfig(name)
   }
 
   function hasCustomCfg(name: string): boolean {
     return name in configs
   }
 
-  return { configs, getSourceCfg, setSourceCfg, resetSourceCfg, hasCustomCfg }
+  return { configs, loaded, load, getSourceCfg, setSourceCfg, resetSourceCfg, hasCustomCfg }
 })

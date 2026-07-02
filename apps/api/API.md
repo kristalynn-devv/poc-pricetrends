@@ -154,6 +154,30 @@ Last 30 cron run log entries across all categories, most recent first. Response:
 
 ---
 
+### `GET /api/source-config`
+Per-source screenshot/limit config overrides, persisted server-side at `output/source-config.json` (survives moving machines/browsers — no longer browser `localStorage`). Only sources with a saved override are present; missing sources fall back to client-side defaults. Response: `SourceConfigMap` — `Record<sourceName, SourceCfg>` where:
+```ts
+SourceCfg = {
+  viewportWidth: number
+  viewportHeight: number
+  quality: number
+  cropHeight?: number
+  clip: { enabled: boolean; x: number; y: number; width: number; height: number }
+  limit: number
+}
+```
+
+### `POST /api/source-config`
+Saves config for one source. Request body: `{ name: string; config: Partial<SourceCfg> }`. Response `200`: the saved `SourceCfg`. `400` if `name` is missing.
+
+### `DELETE /api/source-config`
+Resets one source back to defaults (deletes its override). Request body: `{ name: string }`. Response `200`: `{ ok: true }`. `400` if `name` is missing.
+
+### `POST /api/source-config/migrate`
+One-time import of config previously kept in browser `localStorage` (called automatically by the frontend on first load after this endpoint shipped). Request body: `SourceConfigMap`. Only fills in sources not already present server-side — never overwrites an existing server-side override. Response: the merged `SourceConfigMap`.
+
+---
+
 ## Batch-search routes
 
 17 routes, one per source, all sharing the same request/response contract. Each scrapes a listing page for the given query, then screenshots + Gemini-extracts each matching item, streaming progress as **newline-delimited JSON (NDJSON)**, `Content-Type: application/x-ndjson`. Each successfully extracted item is persisted immediately (`output/results/` + `output/logs/`) — the client does not need to wait for the stream to finish for data to be saved.
