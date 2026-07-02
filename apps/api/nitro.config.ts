@@ -24,9 +24,11 @@ export default defineNitroConfig({
       description: 'Screenshot + Gemini extraction backend. See CLAUDE.md / API.md for architecture notes.',
       version: '1.0.0',
     },
+    route: '/openapi.json',
     production: 'runtime',
     ui: {
-      swagger: { route: '/api-docs' },
+      swagger: { route: '/docs' },
+      scalar: { route: '/reference' },
     },
   },
 })

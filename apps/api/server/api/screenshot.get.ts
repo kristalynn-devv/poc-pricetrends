@@ -5,7 +5,7 @@ import { apiError } from '../utils/errors'
 
 defineRouteMeta({
   openAPI: {
-    tags: ['Core'],
+    tags: ['Screenshot'],
     summary: 'Serve a saved screenshot (query param)',
     description: 'Equivalent to GET /api/screenshots/<filename>.',
     parameters: [{ name: 'file', in: 'query', required: true, schema: { type: 'string' } }],

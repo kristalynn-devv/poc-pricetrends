@@ -5,7 +5,7 @@ import { apiError, classifyError } from '../utils/errors'
 
 defineRouteMeta({
   openAPI: {
-    tags: ['Core'],
+    tags: ['Source Check'],
     summary: 'Run a source check against every search route',
     description: 'Runs a real sample query against every search route (or one, if { source } is given). Appends the result to output/sourcecheck/YYYYMMDD.jsonl.',
     requestBody: {

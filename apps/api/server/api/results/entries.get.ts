@@ -2,7 +2,7 @@ import { readDailyResults } from '../../utils/resultsStore'
 
 defineRouteMeta({
   openAPI: {
-    tags: ['Core'],
+    tags: ['Results'],
     summary: 'Daily extracted results',
     parameters: [
       { name: 'date', in: 'query', required: false, schema: { type: 'string' }, description: 'YYYYMMDD, defaults to today (UTC)' },

@@ -34,7 +34,7 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
 
 defineRouteMeta({
   openAPI: {
-    tags: ['Core'],
+    tags: ['Analyze'],
     summary: 'Standalone Gemini extraction',
     description: 'Extracts structured items from an already-captured base64 image — no Playwright, no persistence.',
     requestBody: {

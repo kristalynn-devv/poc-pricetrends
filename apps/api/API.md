@@ -9,11 +9,15 @@ Regenerate this file whenever a route is added/changed under `server/api/`.
 
 Nitro's built-in OpenAPI generator is enabled (`experimental.openAPI` + `openAPI` in `nitro.config.ts`, `production: 'runtime'` so it also works on `pnpm preview`, not just `pnpm dev`). No extra dependency — served directly by Nitro:
 
-- `GET /api-docs` — Swagger UI (route renamed from Nitro's default `/_swagger` via `openAPI.ui.swagger.route`)
-- `GET /_scalar` — Scalar UI (alternative renderer)
-- `GET /_openapi.json` — raw OpenAPI 3.1 document
+- `GET /docs` — Swagger UI (route renamed from Nitro's default `/_swagger` via `openAPI.ui.swagger.route`)
+- `GET /reference` — Scalar UI (alternative renderer, renamed from default `/_scalar` via `openAPI.ui.scalar.route`)
+- `GET /openapi.json` — raw OpenAPI 3.1 document (renamed from default `/_openapi.json` via `openAPI.route`)
+
+These paths follow the common REST-API doc convention (`/docs`, `/openapi.json`) instead of Nitro's underscore-prefixed defaults, so they're discoverable without reading this file first.
 
 Each route's schema comes from a `defineRouteMeta({ openAPI: {...} })` call at the top of its file (auto-imported global, no import needed). **Must be a literal object** — Nitro's build-time extractor only walks static `ObjectExpression`/`ArrayExpression`/`Literal` AST nodes, so referencing an imported helper function (e.g. `defineRouteMeta({ openAPI: sharedFn(...) })`) silently produces empty metadata. Batch-search routes therefore each have their own inlined literal (same shape, cannot share via a function).
+
+`tags` group routes in the Swagger/Scalar UI sidebar: `Analyze` (`/api/analyze`, `/api/extract`), `Screenshot` (`/api/screenshot*`), `Cron` (`/api/cron-*`), `Logs` (`/api/logs/*`), `Results` (`/api/results/*`), `Source Check` (`/api/sourcecheck*`), `Batch Search` (the 17 `*-search.post.ts` routes).
 
 ## Core routes
 

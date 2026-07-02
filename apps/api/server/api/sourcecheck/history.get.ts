@@ -2,7 +2,7 @@ import { readSourceCheckRunsByDate, listSourceCheckDates } from '../../utils/sou
 
 defineRouteMeta({
   openAPI: {
-    tags: ['Core'],
+    tags: ['Source Check'],
     summary: 'Source-check run history for a day, plus which dates have data',
     parameters: [{ name: 'date', in: 'query', required: false, schema: { type: 'string' }, description: 'YYYYMMDD, defaults to today' }],
     responses: {

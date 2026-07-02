@@ -8,7 +8,7 @@ import { apiError, classifyError } from '../utils/errors'
 
 defineRouteMeta({
   openAPI: {
-    tags: ['Core'],
+    tags: ['Screenshot'],
     summary: 'Standalone screenshot',
     description: 'Screenshot only, no Gemini extraction, no persistence to results/.',
     requestBody: {

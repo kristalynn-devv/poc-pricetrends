@@ -5,7 +5,7 @@ import type { CronConfigMap } from '#shared/types/cronConfig'
 
 defineRouteMeta({
   openAPI: {
-    tags: ['Core'],
+    tags: ['Cron'],
     summary: 'Cron config for every category group',
     description: 'Merged with defaults for any group that has not been configured yet.',
     responses: {

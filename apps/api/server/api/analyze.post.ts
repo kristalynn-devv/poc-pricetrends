@@ -45,7 +45,7 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
 
 defineRouteMeta({
   openAPI: {
-    tags: ['Core'],
+    tags: ['Analyze'],
     summary: 'Screenshot + Gemini extract + save',
     description: 'Main endpoint used by the UI\'s "ถ่ายรูป" button. Takes a Playwright screenshot of the URL, sends it to Gemini for structured extraction, and persists the result.',
     requestBody: {

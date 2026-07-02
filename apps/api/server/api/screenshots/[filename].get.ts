@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 
 defineRouteMeta({
   openAPI: {
-    tags: ['Core'],
+    tags: ['Screenshot'],
     summary: 'Serve a saved screenshot (path param)',
     description: 'Equivalent to GET /api/screenshot?file=<filename>.',
     responses: {

@@ -2,7 +2,7 @@ import { readRecentCronRuns } from '../utils/cronRunStore'
 
 defineRouteMeta({
   openAPI: {
-    tags: ['Core'],
+    tags: ['Cron'],
     summary: 'Recent cron run history',
     description: 'Last 30 cron run log entries across all categories, most recent first.',
     responses: {

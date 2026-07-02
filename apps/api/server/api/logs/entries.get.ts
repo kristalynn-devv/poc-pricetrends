@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 
 defineRouteMeta({
   openAPI: {
-    tags: ['Core'],
+    tags: ['Logs'],
     summary: 'Raw JSONL log entries for a day',
     parameters: [{ name: 'date', in: 'query', required: false, schema: { type: 'string' }, description: 'YYYYMMDD, defaults to today' }],
     responses: {

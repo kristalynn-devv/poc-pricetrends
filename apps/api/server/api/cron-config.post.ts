@@ -6,7 +6,7 @@ import { scheduleCategory } from '../utils/cronScheduler'
 
 defineRouteMeta({
   openAPI: {
-    tags: ['Core'],
+    tags: ['Cron'],
     summary: 'Save cron config for one category',
     description: 'Saves and reschedules immediately — no server restart needed.',
     requestBody: {

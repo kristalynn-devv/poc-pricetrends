@@ -2,7 +2,7 @@ import { readDailySummary } from '../../utils/logger'
 
 defineRouteMeta({
   openAPI: {
-    tags: ['Core'],
+    tags: ['Logs'],
     summary: 'Aggregated daily log stats',
     parameters: [{ name: 'date', in: 'query', required: false, schema: { type: 'string' }, description: 'YYYYMMDD, defaults to today' }],
     responses: {
