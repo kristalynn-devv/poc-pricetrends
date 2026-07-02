@@ -139,221 +139,14 @@
       </v-expansion-panel>
     </v-expansion-panels>
 
-    <!-- ── Per-source Config Dialog ── -->
-    <v-dialog v-model="srcCfgOpen" max-width="400">
-      <v-card v-if="srcCfgTarget">
-        <v-card-title class="d-flex align-center ga-1 pt-4 px-4">
-          <v-icon size="small">mdi-tune</v-icon>
-          <span class="">{{ srcCfgTarget }}</span>
-          <v-spacer />
-          <v-btn icon="mdi-close" size="small" variant="text" @click="srcCfgOpen = false" />
-        </v-card-title>
-        <v-card-text class="px-4 pb-2">
-          <v-row dense class="mb-2">
-            <v-col cols="5">
-              <v-text-field v-model.number="srcCfgEdit.viewportWidth" label="Width (px)" type="number"
-                variant="outlined" density="compact" hide-details />
-            </v-col>
-            <v-col cols="2" class="d-flex align-center justify-center">
-              <span class=" text-medium-emphasis">×</span>
-            </v-col>
-            <v-col cols="5">
-              <v-text-field v-model.number="srcCfgEdit.viewportHeight" label="Height (px)" type="number"
-                variant="outlined" density="compact" hide-details />
-            </v-col>
-          </v-row>
-          <v-row dense align="center" class="mb-2">
-            <v-col cols="6">
-              <v-text-field v-model.number="srcCfgEdit.quality" label="Quality (1–100)" type="number" variant="outlined"
-                density="compact" hide-details />
-            </v-col>
-            <v-col cols="6">
-              <v-text-field v-model.number="srcCfgEdit.cropHeight" label="Crop height (px)" type="number"
-                variant="outlined" density="compact" hide-details clearable placeholder="ไม่ตัด" />
-            </v-col>
-          </v-row>
-          <v-divider class="mb-3" />
-          <v-row dense>
-            <v-col cols="6">
-              <v-combobox v-model="srcCfgEdit.limit" :items="[1, 3, 5, 10]" label="จำนวนชิ้น/คำค้น" variant="outlined"
-                density="compact" hide-details :return-object="false" type="number" />
-            </v-col>
-          </v-row>
-        </v-card-text>
-        <v-card-actions class="px-4 pb-4">
-          <v-btn variant="text" size="small" class="text-none"
-            @click="cfgStore.resetSourceCfg(srcCfgTarget); srcCfgOpen = false">Reset</v-btn>
-          <v-spacer />
-          <v-btn color="primary" size="small" class="text-none" @click="saveSrcCfg">ตกลง</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- ── Per-category Config Dialog ── -->
-    <v-dialog v-model="catCfgOpen" max-width="360">
-      <v-card v-if="catCfgTarget">
-        <v-card-title class="d-flex align-center ga-1 pt-4 px-4">
-          <v-icon size="small">mdi-cog-outline</v-icon>
-          <span class="">{{ catCfgTarget }}</span>
-          <v-spacer />
-          <v-btn icon="mdi-close" size="small" variant="text" @click="catCfgOpen = false" />
-        </v-card-title>
-        <v-card-text class="px-4 pb-2">
-          <v-row dense>
-            <v-col cols="6">
-              <v-text-field v-model.number="catCfgEdit.maxSources" label="จำนวน source" type="number" min="1"
-                variant="outlined" density="compact" hide-details />
-            </v-col>
-            <v-col cols="6">
-              <v-combobox v-model="catCfgEdit.itemsPerSource" :items="[1, 3, 5, 10]" label="จำนวนชิ้น/source"
-                variant="outlined" density="compact" hide-details :return-object="false" type="number" />
-            </v-col>
-          </v-row>
-        </v-card-text>
-        <v-card-actions class="px-4 pb-4">
-          <v-btn variant="text" size="small" class="text-none"
-            @click="catCfgStore.resetCategoryCfg(catCfgTarget); catCfgOpen = false">Reset</v-btn>
-          <v-spacer />
-          <v-btn color="primary" size="small" class="text-none" @click="saveCatCfg">ตกลง</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- ── Cron config dialog ── -->
-    <v-dialog v-model="cronCfgOpen" max-width="440">
-      <v-card v-if="cronCfgTarget">
-        <v-card-title class="d-flex align-center ga-1 pt-4 px-4">
-          <v-icon size="small">mdi-clock-outline</v-icon>
-          <span>{{ cronCfgTarget }}</span>
-          <v-spacer />
-          <v-btn icon="mdi-close" size="small" variant="text" @click="cronCfgOpen = false" />
-        </v-card-title>
-        <v-card-text class="px-4 pb-2">
-          <v-switch v-model="cronCfgEdit.enabled" label="เปิดใช้งาน cron" color="primary" density="compact"
-            hide-details class="mb-2" />
-
-          <v-text-field v-model="cronCfgEdit.cronExpression" label="Cron expression (นาที ชม. วัน เดือน วันในสัปดาห์)"
-            variant="outlined" density="compact" hide-details class="mb-1" placeholder="0 8 * * *" />
-          <div class="d-flex flex-wrap ga-1 mb-3">
-            <v-chip v-for="p in cronPresets" :key="p.expr" size="x-small" variant="tonal"
-              @click="cronCfgEdit.cronExpression = p.expr">{{ p.label }}</v-chip>
-          </div>
-
-          <div class="d-flex align-center ga-2 mb-2">
-            <v-text-field v-model="cronNewQuery" label="เพิ่ม query" variant="outlined" density="compact" hide-details
-              style="flex:1" @keyup.enter="addCronQuery" />
-            <v-btn size="small" variant="tonal" color="secondary" @click="addCronQuery">เพิ่ม</v-btn>
-          </div>
-          <div v-if="cronCfgEdit.queries.length > 0" class="d-flex flex-wrap ga-1 mb-3">
-            <v-chip v-for="(q, qi) in cronCfgEdit.queries" :key="q" size="small" closable
-              @click:close="cronCfgEdit.queries.splice(qi, 1)">{{ q }}</v-chip>
-          </div>
-          <p v-else class="text-caption text-medium-emphasis mb-3">ยังไม่มี query — cron จะไม่ทำงานจนกว่าจะเพิ่ม</p>
-
-          <v-row dense>
-            <v-col cols="6">
-              <v-text-field v-model.number="cronCfgEdit.maxSources" label="จำนวน source" type="number" min="1"
-                variant="outlined" density="compact" hide-details />
-            </v-col>
-            <v-col cols="6">
-              <v-combobox v-model="cronCfgEdit.itemsPerSource" :items="[1, 3, 5, 10]" label="จำนวนชิ้น/source"
-                variant="outlined" density="compact" hide-details :return-object="false" type="number" />
-            </v-col>
-          </v-row>
-
-          <template v-if="cronRunsForTarget.length > 0">
-            <v-divider class="my-3" />
-            <p class="text-caption text-medium-emphasis mb-1">ประวัติการรันล่าสุด</p>
-            <div class="d-flex flex-column ga-1" style="max-height:140px; overflow:auto">
-              <div v-for="r in cronRunsForTarget" :key="r.runId" class="text-caption d-flex align-center ga-1">
-                <v-icon :color="r.error ? 'error' : 'success'" size="12">{{ r.error ? 'mdi-alert-circle' :
-                  'mdi-check-circle' }}</v-icon>
-                <span>{{ new Date(r.timestamp).toLocaleString('th-TH') }}</span>
-                <span class="text-medium-emphasis">· {{ r.sourceCount }} source</span>
-              </div>
-            </div>
-          </template>
-        </v-card-text>
-        <v-card-actions class="px-4 pb-4">
-          <v-spacer />
-          <v-btn color="primary" size="small" class="text-none" @click="saveCronCfg">ตกลง</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- ── Source detail dialog ── -->
-    <v-dialog v-model="detailOpen" fullscreen transition="dialog-bottom-transition">
-      <v-card v-if="detailRun">
-        <!-- Toolbar -->
-        <v-toolbar color="surface" density="compact">
-          <v-btn icon="mdi-close" @click="detailOpen = false" />
-          <v-toolbar-title>
-            {{ detailSrcName }}
-            <span class="text-caption text-medium-emphasis ml-2">{{ detailGrpLabel }}</span>
-          </v-toolbar-title>
-          <v-spacer />
-          <span v-if="detailRun.summary" class="text-caption text-medium-emphasis mr-4">
-            screenshot {{ detailRun.summary.screenshotOk }}/{{ detailRun.summary.total }}
-            · extract {{ detailRun.summary.extractOk }}/{{ detailRun.summary.total }}
-          </span>
-          <v-btn v-if="detailExtracted.length > 0" size="small" variant="tonal" prepend-icon="mdi-download" class="mr-2"
-            @click="downloadJson(detailExtracted.map(({ _screenshot: _s, ...r }) => r), `extracted_${Date.now()}.json`)">JSON</v-btn>
-        </v-toolbar>
-
-        <v-container fluid class="pa-4"
-          style="height: calc(100vh - 48px); display:flex; flex-direction:column; gap:16px; overflow:auto">
-          <!-- Terminal -->
-          <template v-if="detailRun.logs.length > 0 || detailRun.loading">
-            <div>
-              <div class="d-flex align-center px-3 py-1 rounded-t" style="background:#1e1e1e">
-                <v-icon color="green" size="x-small" class="mr-1">mdi-console</v-icon>
-                <span class="text-caption" style="color:#ccc; font-family:monospace">terminal</span>
-              </div>
-              <div class="terminal-box rounded-b" ref="detailTermEl" style="height:320px">
-                <div v-if="detailRun.loading && detailRun.logs.length === 0" style="color:#666">รอการตอบสนอง...</div>
-                <div v-for="(line, li) in detailRun.logs" :key="li"
-                  :style="{ color: logColor(line.level), lineHeight: '1.7' }">
-                  <span style="color:#555">{{ formatLogTime(line.ts) }}</span>
-                  <span :style="{ color: logLevelColor(line.level), marginLeft: '6px', marginRight: '6px' }">[{{
-                    line.level.toUpperCase() }}]</span>
-                  <span>{{ line.msg }}</span>
-                  <span v-if="line.data" style="color:#666; margin-left:6px">{{ JSON.stringify(line.data) }}</span>
-                </div>
-                <div v-if="detailRun.loading" style="color:#4ec9b0">█</div>
-              </div>
-            </div>
-          </template>
-
-          <!-- Bot-block screenshot -->
-          <ScreenshotImg v-if="detailRun.searchPageScreenshot" :src="detailRun.searchPageScreenshot" max-height="360" />
-
-          <!-- Error -->
-          <v-alert v-if="detailRun.error" type="error" density="compact" :text="detailRun.error" class="alert-compact"
-            style="flex:none" />
-
-          <!-- Results table -->
-          <v-data-table v-if="detailExtracted.length > 0" :headers="detailHeaders" :items="detailExtracted"
-            density="compact" class="" style="flex:1">
-            <template #[`item._screenshot`]="{ item }">
-              <ScreenshotImg :src="item._screenshot" thumbnail class="my-1" />
-            </template>
-            <template #[`item.price`]="{ item }">
-              <span>{{ item.price != null ? Number(item.price).toLocaleString('en-US', { maximumFractionDigits: 0 }) :
-                '-' }}</span>
-            </template>
-          </v-data-table>
-        </v-container>
-      </v-card>
-    </v-dialog>
+    <SourceConfigDialog v-model="srcCfgOpen" :target="srcCfgTarget" />
+    <CategoryConfigDialog v-model="catCfgOpen" :target="catCfgTarget" />
+    <CronConfigDialog v-model="cronCfgOpen" :target="cronCfgTarget" />
+    <SourceDetailDialog v-model="detailOpen" :grp-label="detailGrpLabel" :src-name="detailSrcName" />
   </v-container>
 </template>
 
 <script setup lang="ts">
-import { SOURCE_CFG_DEFAULTS, type SourceCfg } from '~/stores/globalConfig';
-import { DEFAULT_CATEGORY_RUN_CONFIG, type CategoryRunConfig } from '~/stores/categoryConfig';
-import { DEFAULT_CRON_CONFIG } from '#shared/utils/cronConfig';
-import type { CronCategoryConfig } from '#shared/types/cronConfig';
-
 const cfgStore = useSourceConfigStore();
 const catCfgStore = useCategoryConfigStore();
 const cronCfgStore = useCronConfigStore();
@@ -372,70 +165,28 @@ const openPanels = ref<number[]>([0, 1, 2, 3, 4]);
 // ── Per-source config dialog ───────────────────────────────────────────────────
 const srcCfgOpen = ref(false);
 const srcCfgTarget = ref('');
-const srcCfgEdit = reactive<SourceCfg>({ ...SOURCE_CFG_DEFAULTS, clip: { ...SOURCE_CFG_DEFAULTS.clip } });
 
 function openSrcCfg(name: string) {
   srcCfgTarget.value = name;
-  const existing = cfgStore.getSourceCfg(name);
-  Object.assign(srcCfgEdit, existing);
-  Object.assign(srcCfgEdit.clip, existing.clip);
   srcCfgOpen.value = true;
-}
-
-function saveSrcCfg() {
-  cfgStore.setSourceCfg(srcCfgTarget.value, { ...srcCfgEdit, clip: { ...srcCfgEdit.clip } });
-  srcCfgOpen.value = false;
 }
 
 // ── Per-category config dialog ─────────────────────────────────────────────────
 const catCfgOpen = ref(false);
 const catCfgTarget = ref('');
-const catCfgEdit = reactive<CategoryRunConfig>({ ...DEFAULT_CATEGORY_RUN_CONFIG });
 
 function openCatCfg(label: string) {
   catCfgTarget.value = label;
-  Object.assign(catCfgEdit, catCfgStore.getCategoryCfg(label));
   catCfgOpen.value = true;
-}
-
-function saveCatCfg() {
-  catCfgStore.setCategoryCfg(catCfgTarget.value, { ...catCfgEdit });
-  catCfgOpen.value = false;
 }
 
 // ── Cron config dialog ─────────────────────────────────────────────────────────
 const cronCfgOpen = ref(false);
 const cronCfgTarget = ref('');
-const cronCfgEdit = reactive<CronCategoryConfig>({ ...DEFAULT_CRON_CONFIG, queries: [] });
-const cronNewQuery = ref('');
-const cronPresets = [
-  { label: 'ทุกวัน 08:00', expr: '0 8 * * *' },
-  { label: 'ทุก 6 ชม.', expr: '0 */6 * * *' },
-  { label: 'ทุกชั่วโมง', expr: '0 * * * *' },
-  { label: 'ทุกวันจันทร์ 08:00', expr: '0 8 * * 1' },
-];
-
-const cronRunsForTarget = computed(() =>
-  cronCfgStore.runs.filter(r => r.label === cronCfgTarget.value).slice(0, 10)
-);
 
 function openCronCfg(label: string) {
   cronCfgTarget.value = label;
-  const existing = cronCfgStore.getCronCfg(label);
-  Object.assign(cronCfgEdit, existing, { queries: [...existing.queries] });
   cronCfgOpen.value = true;
-}
-
-function addCronQuery() {
-  const q = cronNewQuery.value.trim();
-  if (!q || cronCfgEdit.queries.includes(q)) return;
-  cronCfgEdit.queries.push(q);
-  cronNewQuery.value = '';
-}
-
-async function saveCronCfg() {
-  await cronCfgStore.setCronCfg(cronCfgTarget.value, { ...cronCfgEdit, queries: [...cronCfgEdit.queries] });
-  cronCfgOpen.value = false;
 }
 
 // getCfg ที่ให้กับ runGroup: ใช้ per-source override ถ้ามี ไม่งั้น fallback เป็น itemsPerSource ของหมวด
@@ -452,99 +203,10 @@ function getSrcCfgForGroup(grp: any) {
 const detailOpen = ref(false);
 const detailGrpLabel = ref('');
 const detailSrcName = ref('');
-const detailTermEl = ref<HTMLElement>();
-
-const detailRun = computed(() => {
-  if (!detailGrpLabel.value || !detailSrcName.value) return null;
-  const grp = groups.value.find(g => g.label === detailGrpLabel.value);
-  return grp?.runs[detailSrcName.value] ?? null;
-});
-
-const detailExtracted = computed(() => {
-  if (!detailRun.value) return [];
-  const grp = groups.value.find(g => g.label === detailGrpLabel.value);
-  if (!grp) return [];
-  return groupsStore.srcExtracted(grp, detailSrcName.value);
-});
-
-const totalFound = computed(() =>
-  groups.value.reduce((sum, grp) => sum + groupsStore.grpTotalItems(grp), 0)
-);
-const anyRunning = computed(() => groups.value.some(g => g.running));
-
-const { getAllowedKeys, getFieldOrder } = useCategoryFields();
-const { downloadJson } = useDownloadJson();
-const { formatLogTime, logColor, logLevelColor } = useLogStyle();
-
-const detailHeaders = computed(() => {
-  if (detailExtracted.value.length === 0) return [];
-  const grp = groups.value.find(g => g.label === detailGrpLabel.value);
-  const categoryId = grp?.ids?.[0] as string | undefined;
-  const allowed = categoryId ? getAllowedKeys(categoryId) : null;
-  const order = categoryId ? getFieldOrder(categoryId) : [];
-  const allKeys = Object.keys(detailExtracted.value[0]).filter(k => k !== '_screenshot' && k !== '_source');
-  const filteredKeys = allowed ? allKeys.filter(k => allowed.has(k)) : allKeys;
-  const dataKeys = order.length
-    ? [...filteredKeys].sort((a, b) => {
-      const ai = order.indexOf(a); const bi = order.indexOf(b);
-      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-    })
-    : filteredKeys;
-  return [
-    { title: 'รูป', key: '_screenshot', sortable: false, width: 116 },
-    ...dataKeys.map(k => ({ title: k, key: k, sortable: true })),
-    { title: 'ไฟล์', key: '_source', sortable: false },
-  ];
-});
 
 function openDetail(grp: any, srcName: string) {
   detailGrpLabel.value = grp.label;
   detailSrcName.value = srcName;
   detailOpen.value = true;
 }
-
-watch([detailOpen, () => detailRun.value?.logs.length], async () => {
-  if (!detailOpen.value || !detailTermEl.value) return;
-  await nextTick();
-  detailTermEl.value.scrollTop = detailTermEl.value.scrollHeight;
-})
-
 </script>
-
-<style scoped>
-.alert-compact :deep(.v-alert__content) {
-  padding-top: 6px;
-  padding-bottom: 6px;
-}
-
-.alert-compact {
-  min-height: unset !important;
-}
-
-.terminal-box {
-  background: #1e1e1e;
-  font-family: monospace;
-  font-size: 12px;
-  padding: 10px 14px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #555 #2d2d2d;
-}
-
-.terminal-box::-webkit-scrollbar {
-  width: 6px;
-}
-
-.terminal-box::-webkit-scrollbar-track {
-  background: #2d2d2d;
-}
-
-.terminal-box::-webkit-scrollbar-thumb {
-  background: #555;
-  border-radius: 3px;
-}
-
-.terminal-box::-webkit-scrollbar-thumb:hover {
-  background: #777;
-}
-</style>

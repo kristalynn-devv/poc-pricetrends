@@ -12,6 +12,7 @@ import { dismissCookieBanner, createStealthContext, applyStealthScripts, takeScr
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
 import { buildScreenshotFilename } from '../utils/filename'
+import { sanitizeItems } from '../utils/sanitize'
 
 const AH_BASE = 'https://www.auctionhouse.co.th'
 
@@ -335,7 +336,7 @@ export default defineEventHandler(async (event) => {
             emit('info', `[${i + 1}] Extracting with Gemini`)
             const { text, geminiInputTokens, geminiOutputTokens, imageWidth, imageHeight } = await callGemini(geminiModel, extractPrompt, base64)
             try {
-              result.items = JSON.parse(text)
+              result.items = sanitizeItems(JSON.parse(text))
               result.extractOk = true
               emit('info', `[${i + 1}] Extracted ${result.items.length} item(s)`)
             } catch {

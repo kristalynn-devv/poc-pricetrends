@@ -78,6 +78,10 @@ Source list ทั้งหมดนิยามใน `packages/shared/constant
 
 **เพิ่ม source ใหม่ต้องทำพร้อมกัน 2 ที่**: route file (`apps/api/server/api/`) + `packages/shared/constants/categoryGroups.ts`
 
+**Search route factory** (`apps/api/server/utils/searchRouteFactory.ts`) — สำหรับ source ที่เป็น "simple shape" (ไม่มี bot protection, ไม่ persist browser/cookie, ไม่ pagination, ใช้ CSS selector เดียวหา listing links) ให้ใช้ `defineSearchRoute(config)` แทนการเขียน route ทั้งไฟล์เอง — encapsulate stream wiring/stealth browser/screenshot→Gemini extract→sanitize→persist loop/concurrency/error handling ไว้ให้แล้ว route file เหลือแค่ `defineRouteMeta({ openAPI: {...} })` (ต้องเป็น literal object ตามเดิม) + `defineSearchRoute({ sourceKey, siteName, sourceCode, defaultCategoryId, buildSearchUrl, linkSelector, ... })`. รองรับ hook `beforeCollectLinks`/`beforeScreenshot` สำหรับ site ที่ต้องมี step พิเศษเล็กน้อย (เช่น fill+submit search box, ซ่อน element ก่อนถ่าย) โดยไม่ต้องหลุดจาก factory
+- ใช้กับ: `kaidee-search`, `moppet-search`, `prapantip-search`, `shopbkk-search`, `truck2hand-search`, `uauction-search`
+- ยังคง bespoke (ไม่ใช้ factory เพราะ logic ต่างจาก simple shape มาก): `auctionhouse-search` (persistent context + bot-retry + pagination), `komehyo-search` (interactive search-box submission), `sfbrandname-search` (multi-strategy link discovery), `compasia-search` (multi-pass slug matching), `chrono24-search` (multi-selector fallback chain)
+
 ## Rules
 
 - **อัปเดต CLAUDE.md ทุกครั้งที่มีการเปลี่ยนแปลง** — เมื่อเพิ่ม route, utility, component, หรือเปลี่ยน architecture ให้อัปเดต CLAUDE.md ให้ตรงกับ code จริงเสมอ
@@ -229,6 +233,11 @@ packages/shared/        # plain TS, ไม่มี build step, import ผ่า
 
 **Frontend components/composables:**
 - `apps/web/app/components/ScreenshotImg.vue` — แสดงภาพ screenshot พร้อม lightbox (thumbnail + full preview)
+- `apps/web/app/components/SourceConfigDialog.vue` — dialog ตั้งค่า screenshot config ต่อ source (ปุ่มเฟือง `mdi-tune` ต่อแถว) ใช้ `useSourceConfigStore`
+- `apps/web/app/components/CategoryConfigDialog.vue` — dialog ตั้งค่า `maxSources`/`itemsPerSource` ต่อหมวด (ปุ่มเฟือง `mdi-cog-outline` หัว panel) ใช้ `useCategoryConfigStore`
+- `apps/web/app/components/CronConfigDialog.vue` — dialog ตั้งค่า cron ต่อหมวด + ประวัติการรันล่าสุด (ปุ่มนาฬิกา `mdi-clock-outline` หัว panel) ใช้ `useCronConfigStore`
+- `apps/web/app/components/SourceDetailDialog.vue` — dialog full-screen แสดงผลลัพธ์ + terminal log ต่อ source (เปิดจากการคลิกแถวใน `index.vue`)
+  - `index.vue` เหลือแค่ orchestration state (dialog ไหนเปิดอยู่ target อะไร) — ลอจิกจริงของแต่ละ dialog อยู่ในไฟล์ข้างต้น อย่าย้าย logic กลับเข้า `index.vue`
 - `apps/web/app/composables/useCategoryFields.ts` — ข้อมูล required/optional fields ต่อ category (Nuxt auto-import)
   - `getFieldOrder(categoryId)` — คืน canonical column order: required → price → currency → optional
   - ใช้ใน `index.vue` (srcHeaders, detailHeaders) และ `entries.vue` (getColumns) เพื่อให้ลำดับ column เหมือนกันทุก source ในหมวดเดียวกัน อย่า sort ด้วย `Object.keys()` ดิบ
