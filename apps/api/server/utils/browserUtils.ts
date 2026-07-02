@@ -91,7 +91,39 @@ export async function applyStealthScripts(ctx: BrowserContext): Promise<void> {
           ? Promise.resolve({ state: Notification.permission })
           : origQuery(p)
     }
+
+    // Headless Chromium renders WebGL via SwiftShader, which is one of the strongest
+    // automation signals bot-detection services (reCAPTCHA risk score, etc.) check for.
+    // Spoof vendor/renderer to look like a real discrete GPU.
+    const spoofGetParameter = (proto: any) => {
+      const orig = proto.getParameter
+      proto.getParameter = function (param: number) {
+        if (param === 37445) return 'Google Inc. (NVIDIA)' // UNMASKED_VENDOR_WEBGL
+        if (param === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1660 SUPER Direct3D11 vs_5_0 ps_5_0, D3D11)' // UNMASKED_RENDERER_WEBGL
+        return orig.call(this, param)
+      }
+    }
+    try { spoofGetParameter(WebGLRenderingContext.prototype) } catch { /* not available */ }
+    try { spoofGetParameter(WebGL2RenderingContext.prototype) } catch { /* not available */ }
   })
+}
+
+/** Move the mouse along a short randomized path to mimic human presence before interacting with a page. */
+export async function humanizeMouse(page: Page): Promise<void> {
+  const steps = 3 + Math.floor(Math.random() * 3)
+  let x = 100 + Math.random() * 300
+  let y = 100 + Math.random() * 300
+  for (let i = 0; i < steps; i++) {
+    x += (Math.random() - 0.5) * 400
+    y += (Math.random() - 0.5) * 300
+    await page.mouse.move(Math.max(0, x), Math.max(0, y), { steps: 5 + Math.floor(Math.random() * 10) })
+    await page.waitForTimeout(80 + Math.random() * 200)
+  }
+}
+
+/** Random delay in [minMs, maxMs) — use between navigations to avoid a fixed, bot-like cadence. */
+export function jitterDelay(minMs: number, maxMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, minMs + Math.random() * (maxMs - minMs)))
 }
 
 export async function createStealthContext(

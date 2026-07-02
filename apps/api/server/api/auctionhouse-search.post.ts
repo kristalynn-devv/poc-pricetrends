@@ -8,7 +8,7 @@ import { apiError, classifyError } from '../utils/errors'
 import { persistExtraction } from '../utils/persistExtraction'
 import type { ScreenshotConfig } from '#shared/types/screenshot'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
-import { dismissCookieBanner, createStealthContext, applyStealthScripts, takeScreenshot, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
+import { dismissCookieBanner, createStealthContext, applyStealthScripts, takeScreenshot, runConcurrently, preparePageForScreenshot, humanizeMouse, jitterDelay } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
 import { buildScreenshotFilename } from '../utils/filename'
@@ -44,20 +44,21 @@ async function gotoWithBotRetry(
 ): Promise<boolean> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     await page.goto(url, { waitUntil: 'load', timeout: 30000 })
-    await page.waitForTimeout(2000)
+    await jitterDelay(1500, 3000)
+    await humanizeMouse(page)
 
     if (!await isBotPage(page)) return true
 
     emit('info', `Bot page detected (attempt ${attempt}/${maxRetries}) — waiting for reCAPTCHA redirect`)
     try {
       await page.waitForURL((u) => !u.includes('/.lsrecap/'), { timeout: 20000 })
-      await page.waitForTimeout(1500)
+      await jitterDelay(1000, 2000)
       if (!await isBotPage(page)) return true
     } catch { /* redirect timeout */ }
 
     if (attempt < maxRetries) {
       emit('warn', `reCAPTCHA redirect timed out — retrying in 5s`)
-      await page.waitForTimeout(5000)
+      await jitterDelay(4000, 7000)
     }
   }
   emit('warn', `Still on bot page after ${maxRetries} attempts`)
@@ -166,6 +167,7 @@ export default defineEventHandler(async (event) => {
           emit('info', 'Warming up via homepage')
           await gotoWithBotRetry(page, AH_BASE, emit, 3)
           await dismissCookieBanner(page)
+          await jitterDelay(1200, 2500)
 
           emit('info', `Loading search page`)
           const searchOk = await gotoWithBotRetry(page, searchUrl, emit, 3)
