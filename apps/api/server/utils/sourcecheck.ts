@@ -1,9 +1,9 @@
 import { SEARCH_ROUTES, SEARCH_ROUTE_CATEGORY, type SearchRouteKey } from '#shared/constants/searchRoutes'
-import type { BacktestResult } from '#shared/types/backtest'
+import type { SourceCheckResult } from '#shared/types/sourcecheck'
 import type { StreamEvent } from '#shared/types/stream'
 
-/** Query ตัวอย่างต่อหมวด ใช้เป็น input จริงตอนรัน backtest */
-const BACKTEST_QUERIES: Record<string, string> = {
+/** Query ตัวอย่างต่อหมวด ใช้เป็น input จริงตอนตรวจ source */
+const SOURCECHECK_QUERIES: Record<string, string> = {
   '103': 'Rolex',
   '106': 'พระสมเด็จ',
   '107': 'iPhone',
@@ -11,23 +11,23 @@ const BACKTEST_QUERIES: Record<string, string> = {
   '111': 'Bosch',
 }
 
-const BACKTEST_TIMEOUT_MS = 60_000
+const SOURCECHECK_TIMEOUT_MS = 60_000
 
-export async function runSourceBacktest(source: SearchRouteKey, baseUrl: string): Promise<BacktestResult> {
+export async function runSourceCheck(source: SearchRouteKey, baseUrl: string): Promise<SourceCheckResult> {
   const path = SEARCH_ROUTES[source]
   const categoryId = SEARCH_ROUTE_CATEGORY[path]
-  const query = BACKTEST_QUERIES[categoryId] ?? 'test'
+  const query = SOURCECHECK_QUERIES[categoryId] ?? 'test'
   const start = Date.now()
-  const result: BacktestResult = {
+  const result: SourceCheckResult = {
     source, categoryId, query, pass: false,
     productsFound: 0, screenshotOk: 0, extractOk: 0,
     durationMs: 0, error: null, timestamp: new Date().toISOString(),
   }
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), BACKTEST_TIMEOUT_MS)
+  const timeout = setTimeout(() => controller.abort(), SOURCECHECK_TIMEOUT_MS)
   try {
-    const res = await fetch(`${baseUrl}${path}`, {
+    const res = await fetch(`${baseUrl}${path}?sourceCheck=1`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, categoryId, limit: 1 }),
@@ -75,15 +75,15 @@ export async function runSourceBacktest(source: SearchRouteKey, baseUrl: string)
   return result
 }
 
-export async function runAllBacktests(baseUrl: string, concurrency = 1): Promise<BacktestResult[]> {
+export async function runAllSourceChecks(baseUrl: string, concurrency = 1): Promise<SourceCheckResult[]> {
   const sources = Object.keys(SEARCH_ROUTES) as SearchRouteKey[]
-  const results: BacktestResult[] = new Array(sources.length)
+  const results: SourceCheckResult[] = new Array(sources.length)
   let i = 0
   async function worker() {
     while (i < sources.length) {
       const idx = i++
       const source = sources[idx]
-      if (source) results[idx] = await runSourceBacktest(source, baseUrl)
+      if (source) results[idx] = await runSourceCheck(source, baseUrl)
     }
   }
   await Promise.all(Array.from({ length: concurrency }, worker))

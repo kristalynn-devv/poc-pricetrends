@@ -1,4 +1,4 @@
-export interface BacktestResult {
+export interface SourceCheckResult {
   source: string
   categoryId: string
   query: string
@@ -11,8 +11,8 @@ export interface BacktestResult {
   timestamp: string
 }
 
-export interface BacktestRun {
+export interface SourceCheckRun {
   runId: string
   timestamp: string
-  results: BacktestResult[]
+  results: SourceCheckResult[]
 }

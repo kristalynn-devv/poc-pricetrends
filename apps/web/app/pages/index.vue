@@ -12,8 +12,8 @@
           class="text-none">รายการข้อมูล</v-btn>
         <v-btn variant="text" prepend-icon="mdi-text-box-outline" to="/logs" size="small" class="text-none">System
           Logs</v-btn>
-        <v-btn variant="text" prepend-icon="mdi-clipboard-check-outline" to="/backtest" size="small"
-          class="text-none">Backtest</v-btn>
+        <v-btn variant="text" prepend-icon="mdi-clipboard-check-outline" to="/sourcecheck" size="small"
+          class="text-none">Source Check</v-btn>
       </v-col>
     </v-row>
 

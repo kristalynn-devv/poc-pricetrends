@@ -93,12 +93,12 @@ Aggregated daily stats derived from the log file. Response: `{ date, total, succ
 
 ---
 
-### `POST /api/backtest`
-Runs a real backtest query against every search route (or one, if `{ source }` is given), using a fixed sample query per category (`BACKTEST_QUERIES` in `server/utils/backtest.ts`, `limit: 1`), and checks pass/fail (product found + screenshot captured). Appends the result to `output/backtest/YYYYMMDD.jsonl`.
+### `POST /api/sourcecheck`
+Runs a real source-check query against every search route (or one, if `{ source }` is given), using a fixed sample query per category (`SOURCECHECK_QUERIES` in `server/utils/sourcecheck.ts`, `limit: 1`), and checks pass/fail (product found + screenshot captured). Appends the result to `output/sourcecheck/YYYYMMDD.jsonl`.
 
-Request body: `{ source?: SearchRouteKey }` — omit to run all 17 sources concurrently (concurrency 3).
+Request body: `{ source?: SearchRouteKey }` — omit to run all 17 sources (run sequentially, concurrency 1 — running them in parallel overloads Playwright/Chromium on typical dev machines).
 
-Response `200` (`BacktestRun`):
+Response `200` (`SourceCheckRun`):
 ```ts
 {
   runId: string          // ISO timestamp, used as the run identifier
@@ -118,8 +118,8 @@ Response `200` (`BacktestRun`):
 }
 ```
 
-### `GET /api/backtest`
-Reads the most recent backtest run from `output/backtest/`. Response: `BacktestRun | null`.
+### `GET /api/sourcecheck`
+Reads the most recent source-check run from `output/sourcecheck/`. Response: `SourceCheckRun | null`.
 
 ---
 

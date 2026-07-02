@@ -44,8 +44,9 @@ Each app can also be run directly: `pnpm --filter poc-pricetrends-api dev`, `pnp
 - `GET /api/results/entries?date=YYYYMMDD&screenshotFile=` — single result by screenshot filename
 - `GET /api/logs/entries?date=YYYYMMDD` — raw JSONL log entries for a given day
 - `GET /api/logs/summary?date=YYYYMMDD` — daily summary (total/success/failed, bySource, byCategory, avgDuration)
-- `POST /api/backtest` — รัน backtest จริงกับทุก source (หรือ 1 source ถ้าส่ง `{ source }`) ด้วย query ตัวอย่างต่อหมวด, บันทึกผลที่ `output/backtest/YYYYMMDD.jsonl`, คืน `BacktestRun`
-- `GET /api/backtest` — อ่านผล backtest รันล่าสุด
+- `POST /api/sourcecheck` — รัน source check จริงกับทุก source (หรือ 1 source ถ้าส่ง `{ source }`) ด้วย query ตัวอย่างต่อหมวด, บันทึกผลที่ `output/sourcecheck/YYYYMMDD.jsonl`, คืน `SourceCheckRun`
+- `GET /api/sourcecheck` — อ่านผล source check รันล่าสุด
+- `GET /api/sourcecheck/history?date=YYYYMMDD` — ทุก run ของวันนั้น + `availableDates` (วันที่มีข้อมูล) สำหรับ UI ดูย้อนหลัง
 - `GET /api/cron-config` — cron config ทุกหมวด (merge กับ default ถ้ายังไม่เคยตั้งค่า)
 - `POST /api/cron-config` — บันทึก cron config ของ 1 หมวด (`{ label, config }`) แล้ว reschedule ทันที
 - `GET /api/cron-runs` — ประวัติการรัน cron ล่าสุด (30 รายการ, ข้าม `output/cron-runs/`)
@@ -120,7 +121,7 @@ Source list ทั้งหมดนิยามใน `packages/shared/constant
 - `packages/shared/types/cronConfig.ts` — `CronCategoryConfig { enabled, cronExpression, queries, maxSources, itemsPerSource }`
 - `packages/shared/utils/cronConfig.ts` — `DEFAULT_CRON_CONFIG` (disabled, `0 8 * * *`) + `mergeCronConfig()` + `isValidCronExpression()`
 - `apps/api/server/utils/cronConfigStore.ts` — persist cron config ต่อหมวดที่ `apps/api/output/cron-config.json`
-- `apps/api/server/utils/cronRunner.ts` — `runCategoryCron(label, cfg, baseUrl)`: เรียก search route จริงของแต่ละ source (จำกัดที่ `cfg.maxSources`) × ทุก query ใน `cfg.queries`, จำนวนพร้อมกัน 1–3 — แต่ละ route persist ผลลัพธ์ของตัวเองอยู่แล้ว (`persistExtraction`), cronRunner แค่ drain NDJSON stream ให้ครบ (pattern เดียวกับ `backtest.ts`)
+- `apps/api/server/utils/cronRunner.ts` — `runCategoryCron(label, cfg, baseUrl)`: เรียก search route จริงของแต่ละ source (จำกัดที่ `cfg.maxSources`) × ทุก query ใน `cfg.queries`, จำนวนพร้อมกัน 1–3 — แต่ละ route persist ผลลัพธ์ของตัวเองอยู่แล้ว (`persistExtraction`), cronRunner แค่ drain NDJSON stream ให้ครบ (pattern เดียวกับ `sourcecheck.ts`)
 - `apps/api/server/utils/cronRunStore.ts` — บันทึกประวัติการรัน (`CronRunLogEntry`) ที่ `apps/api/output/cron-runs/YYYYMMDD.jsonl`
 - `apps/api/server/utils/cronScheduler.ts` — `scheduleCategory(label)` (register/reschedule 1 หมวด) + `initCronScheduler()` (เรียกตอน server start จาก `server/plugins/cron.ts`); internal fetch ใช้ `http://localhost:${PORT}` (default 8080)
 - `apps/api/server/api/cron-config.get.ts` / `.post.ts` — อ่าน/บันทึก config ต่อหมวด, POST เรียก `scheduleCategory()` ทันทีเพื่อ reschedule โดยไม่ต้อง restart server
@@ -158,7 +159,7 @@ Source list ทั้งหมดนิยามใน `packages/shared/constant
 - `apps/api/output/screenshots/` — รูป JPG
 - `apps/api/output/results/YYYYMMDD.jsonl` — **แหล่งเดียว** ของข้อมูลสินค้าที่ extract ได้ (1 entry ต่อ screenshot)
 - `apps/api/output/logs/YYYYMMDD.jsonl` — operational log (duration, error, tokens, `screenshotFile` pointer)
-- `apps/api/output/backtest/YYYYMMDD.jsonl` — ผล backtest ต่อรัน (1 บรรทัด = 1 `BacktestRun` ทั้งชุด)
+- `apps/api/output/sourcecheck/YYYYMMDD.jsonl` — ผล source check ต่อรัน (1 บรรทัด = 1 `SourceCheckRun` ทั้งชุด)
 - `apps/api/output/cron-config.json` — cron config ต่อหมวด (enable/cron expression/queries/maxSources/itemsPerSource)
 - `apps/api/output/cron-runs/YYYYMMDD.jsonl` — ประวัติการรัน cron ต่อหมวด (1 บรรทัด = 1 `CronRunLogEntry`)
 
@@ -167,9 +168,10 @@ Source list ทั้งหมดนิยามใน `packages/shared/constant
 - `apps/api/server/utils/persistExtraction.ts` — `persistExtraction()`: บันทึก `appendResult` + `appendLog` success ในครั้งเดียว
 - `apps/api/server/utils/resultsStore.ts` — `appendResult()` / `readDailyResults()`: เขียน/อ่าน `output/results/YYYYMMDD.jsonl`
   - `ResultEntry` มี `roundId?` (batch run ID) และ `searchQuery?` สำหรับ group ผลลัพธ์
-- `apps/api/server/utils/backtest.ts` — `runSourceBacktest()` / `runAllBacktests()`: เรียก search route จริงของแต่ละ source (query ตัวอย่างต่อหมวดใน `BACKTEST_QUERIES`, `limit: 1`) แล้วอ่าน NDJSON stream เพื่อสรุป pass/fail (เจอสินค้า + ถ่ายภาพได้)
-- `apps/api/server/utils/backtestStore.ts` — `appendBacktestRun()` / `readLatestBacktestRun()`: เขียน/อ่าน `output/backtest/YYYYMMDD.jsonl`
-- หน้า `/backtest` (`apps/web/app/pages/backtest.vue`) — ปุ่มรัน backtest ทุก source + ตารางผล pass/fail ต่อ source (ตรวจ+รายงานเท่านั้น ไม่แก้ไข code อัตโนมัติ)
+- `apps/api/server/utils/sourcecheck.ts` — `runSourceCheck()` / `runAllSourceChecks()`: เรียก search route จริงของแต่ละ source (query ตัวอย่างต่อหมวดใน `SOURCECHECK_QUERIES`, `limit: 1`, concurrency 1) โดยแปะ `?sourceCheck=1` ต่อท้าย URL แล้วอ่าน NDJSON stream เพื่อสรุป pass/fail (เจอสินค้า + ถ่ายภาพได้)
+- `apps/api/server/utils/sourcecheckStore.ts` — `appendSourceCheckRun()` / `readLatestSourceCheckRun()` / `readSourceCheckRunsByDate(date)` / `listSourceCheckDates()`: เขียน/อ่าน `output/sourcecheck/YYYYMMDD.jsonl` (1 บรรทัด = 1 run, วันนึงมีได้หลาย run)
+- **Log แยกจากของจริง**: `?sourceCheck=1` ทำให้ `server/middleware/sourceCheckContext.ts` ตั้ง flag แบบ request-scoped ผ่าน `AsyncLocalStorage` (`server/utils/sourceCheckContext.ts`) — `appendLog()` (`logger.ts`) และ `appendResult()` (`resultsStore.ts`) เช็ค flag นี้แล้ว skip การเขียนถ้าเป็น source-check request ผลคือรัน sourcecheck ไม่ปนกับ `output/logs/`/`output/results/` จริง (แต่ยังถ่าย screenshot ไฟล์จริงเหมือนเดิม เพราะต้องทดสอบของจริง) — ทำแบบนี้เพื่อไม่ต้องแก้ทุก route ไฟล์ (17 ไฟล์) ที่เรียก `appendLog`/`persistExtraction` ตรงๆ
+- หน้า `/sourcecheck` (`apps/web/app/pages/sourcecheck.vue`, state เก็บใน `useSourceCheckStore` เพื่อไม่ให้หายตอนเปลี่ยนหน้า) — ปุ่มตรวจสอบ source ทั้งหมด + ตารางผลล่าสุด + ส่วนดูประวัติย้อนหลัง (date picker เหมือน `/logs`, ดึงจาก `GET /api/sourcecheck/history?date=`) ตารางผลใช้ component ร่วม `apps/web/app/components/SourceCheckResultTable.vue` (ตรวจ+รายงานเท่านั้น ไม่แก้ไข code อัตโนมัติ)
 
 **File naming convention:** `[YYYYMMDD]_[HHmmss]_[CategoryID]_[SourceCode][_{suffix}].jpg`
 - บันทึกที่ `apps/api/output/screenshots/`
@@ -233,6 +235,7 @@ packages/shared/        # plain TS, ไม่มี build step, import ผ่า
 
 **Frontend components/composables:**
 - `apps/web/app/components/ScreenshotImg.vue` — แสดงภาพ screenshot พร้อม lightbox (thumbnail + full preview)
+- `apps/web/app/components/SourceCheckResultTable.vue` — ตาราง pass/fail ต่อ source ใช้ร่วมกันทั้งส่วน "ผลล่าสุด" และ "ประวัติย้อนหลัง" ในหน้า `/sourcecheck`
 - `apps/web/app/components/SourceConfigDialog.vue` — dialog ตั้งค่า screenshot config ต่อ source (ปุ่มเฟือง `mdi-tune` ต่อแถว) ใช้ `useSourceConfigStore`
 - `apps/web/app/components/CategoryConfigDialog.vue` — dialog ตั้งค่า `maxSources`/`itemsPerSource` ต่อหมวด (ปุ่มเฟือง `mdi-cog-outline` หัว panel) ใช้ `useCategoryConfigStore`
 - `apps/web/app/components/CronConfigDialog.vue` — dialog ตั้งค่า cron ต่อหมวด + ประวัติการรันล่าสุด (ปุ่มนาฬิกา `mdi-clock-outline` หัว panel) ใช้ `useCronConfigStore`
@@ -242,7 +245,7 @@ packages/shared/        # plain TS, ไม่มี build step, import ผ่า
   - `getFieldOrder(categoryId)` — คืน canonical column order: required → price → currency → optional
   - ใช้ใน `index.vue` (srcHeaders, detailHeaders) และ `entries.vue` (getColumns) เพื่อให้ลำดับ column เหมือนกันทุก source ในหมวดเดียวกัน อย่า sort ด้วย `Object.keys()` ดิบ
 - `apps/web/app/composables/useApi.ts` — API client wrapper อ่าน `NUXT_PUBLIC_API_BASE`
-- `apps/web/app/lib/api/` — HTTP functions แยกตาม domain (results, logs, search, screenshots, backtest, cron)
+- `apps/web/app/lib/api/` — HTTP functions แยกตาม domain (results, logs, search, screenshots, sourcecheck, cron)
 
 ## Known gaps
 

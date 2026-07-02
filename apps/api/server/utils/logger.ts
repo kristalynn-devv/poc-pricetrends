@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import type { DailySummary, LogEntry } from '#shared/types/log'
 import { extractDomain } from '#shared/utils/domain'
+import { isSourceCheckRequest } from './sourceCheckContext'
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10).replace(/-/g, '')
@@ -13,6 +14,7 @@ function logPath(dateStr?: string): string {
 }
 
 export async function appendLog(entry: LogEntry): Promise<void> {
+  if (isSourceCheckRequest()) return
   const dir = join(process.cwd(), 'output', 'logs')
   await mkdir(dir, { recursive: true })
   await appendFile(logPath(), JSON.stringify(entry) + '\n', 'utf8')

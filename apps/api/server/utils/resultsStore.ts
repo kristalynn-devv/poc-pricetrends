@@ -2,6 +2,7 @@ import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import type { ResultEntry } from '#shared/types/result'
+import { isSourceCheckRequest } from './sourceCheckContext'
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10).replace(/-/g, '')
@@ -12,6 +13,7 @@ function resultsPath(dateStr?: string): string {
 }
 
 export async function appendResult(entry: ResultEntry): Promise<void> {
+  if (isSourceCheckRequest()) return
   const dir = join(process.cwd(), 'output', 'results')
   await mkdir(dir, { recursive: true })
   await appendFile(resultsPath(), JSON.stringify(entry) + '\n', 'utf8')
