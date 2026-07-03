@@ -15,6 +15,7 @@ export const API_PATHS = {
   cronRuns: '/api/cron-runs',
   sourceConfig: '/api/source-config',
   sourceConfigMigrate: '/api/source-config/migrate',
+  appConfig: '/api/app-config',
 } as const
 
 export function screenshotPath(file: string): string {

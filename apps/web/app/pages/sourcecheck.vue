@@ -1,6 +1,6 @@
 <template>
   <v-container class="py-8" max-width="1100">
-    <v-row class="mb-4" align="center">
+    <v-row class="mb-4">
       <v-col>
         <h1 class="text-h4 font-weight-bold">Source Check</h1>
         <p class="text-body-2 text-medium-emphasis mt-1">
@@ -9,6 +9,8 @@
       </v-col>
       <v-col cols="auto" class="d-flex ga-1">
         <v-btn variant="text" prepend-icon="mdi-arrow-left" to="/" size="small">กลับหน้าหลัก</v-btn>
+        <v-btn variant="text" prepend-icon="mdi-tune" size="small" class="text-none"
+          @click="appCfgOpen = true">Config</v-btn>
       </v-col>
     </v-row>
 
@@ -71,7 +73,7 @@
         <v-card-title class="text-subtitle-1 d-flex align-center ga-2">
           <span>{{ formatTs(r.timestamp) }}</span>
           <v-chip size="small" variant="tonal">
-            ผ่าน {{ r.results.filter(x => x.pass).length }}/{{ r.results.length }}
+            ผ่าน {{r.results.filter(x => x.pass).length}}/{{ r.results.length }}
           </v-chip>
           <v-spacer />
           <span v-if="i === 0" class="text-caption text-medium-emphasis">ล่าสุดของวันนี้</span>
@@ -79,33 +81,36 @@
         <ResultTable :results="r.results" />
       </v-card>
     </template>
+
+    <AppConfigDialog v-model="appCfgOpen" />
   </v-container>
 </template>
 
 <script setup lang="ts">
-import { useSourceCheckStore } from '~/stores/sourcecheck'
-import ResultTable from '~/components/SourceCheckResultTable.vue'
+import { useSourceCheckStore } from '~/stores/sourcecheck';
+import ResultTable from '~/components/SourceCheckResultTable.vue';
 
-const store = useSourceCheckStore()
+const store = useSourceCheckStore();
+const appCfgOpen = ref(false);
 
 function formatTs(ts: string): string {
-  return new Date(ts).toLocaleString('th-TH')
+  return new Date(ts).toLocaleString('th-TH');
 }
 
 const datePickerDate = computed({
   get: () => new Date(store.selectedDate + 'T00:00:00'),
   set: (val: Date) => {
-    const y = val.getFullYear()
-    const m = String(val.getMonth() + 1).padStart(2, '0')
-    const d = String(val.getDate()).padStart(2, '0')
-    store.selectedDate = `${y}-${m}-${d}`
-    store.dateMenu = false
-    store.loadHistory()
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    store.selectedDate = `${y}-${m}-${d}`;
+    store.dateMenu = false;
+    store.loadHistory();
   },
-})
+});
 
 onMounted(() => {
-  if (!store.loaded && !store.running) store.loadLatest()
-  store.loadHistory()
-})
+  if (!store.loaded && !store.running) store.loadLatest();
+  store.loadHistory();
+});
 </script>

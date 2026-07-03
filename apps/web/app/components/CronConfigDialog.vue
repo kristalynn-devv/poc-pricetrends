@@ -21,7 +21,7 @@
         <div class="d-flex align-center ga-2 mb-2">
           <v-text-field v-model="newQuery" label="เพิ่ม query" variant="outlined" density="compact" hide-details
             style="flex:1" @keyup.enter="addQuery" />
-          <v-btn size="small" variant="tonal" color="secondary" @click="addQuery">เพิ่ม</v-btn>
+          <v-btn variant="tonal" color="secondary" @click="addQuery" height="40">เพิ่ม</v-btn>
         </div>
         <div v-if="edit.queries.length > 0" class="d-flex flex-wrap ga-1 mb-3">
           <v-chip v-for="(q, qi) in edit.queries" :key="q" size="small" closable
@@ -54,6 +54,7 @@
         </template>
       </v-card-text>
       <v-card-actions class="px-4 pb-4">
+        <v-btn variant="text" size="small" class="text-none" @click="reset">Reset</v-btn>
         <v-spacer />
         <v-btn color="primary" size="small" class="text-none" @click="save">ตกลง</v-btn>
       </v-card-actions>
@@ -104,6 +105,12 @@ function addQuery() {
 
 async function save() {
   await cronCfgStore.setCronCfg(props.target, { ...edit, queries: [...edit.queries] });
+  emit('update:modelValue', false);
+}
+
+async function reset() {
+  Object.assign(edit, DEFAULT_CRON_CONFIG, { queries: [] });
+  await cronCfgStore.setCronCfg(props.target, { ...edit });
   emit('update:modelValue', false);
 }
 </script>

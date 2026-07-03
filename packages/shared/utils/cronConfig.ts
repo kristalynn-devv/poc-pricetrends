@@ -1,12 +1,11 @@
 import type { CronCategoryConfig } from '../types/cronConfig'
-import { DEFAULT_CATEGORY_RUN_CONFIG } from './categoryConfig'
 
 export const DEFAULT_CRON_CONFIG: CronCategoryConfig = {
   enabled: false,
   cronExpression: '0 8 * * *',
   queries: [],
-  maxSources: DEFAULT_CATEGORY_RUN_CONFIG.maxSources,
-  itemsPerSource: DEFAULT_CATEGORY_RUN_CONFIG.itemsPerSource,
+  maxSources: 3,
+  itemsPerSource: 1,
 }
 
 export function mergeCronConfig(partial?: Partial<CronCategoryConfig>): CronCategoryConfig {

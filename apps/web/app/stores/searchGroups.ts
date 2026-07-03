@@ -3,8 +3,9 @@ import { getCategoryFieldDefs, type FieldDef } from '~/composables/useCategoryFi
 import type { ItemResult, BatchSummary } from '#shared/types/item'
 import { SEARCH_ROUTE_CATEGORY } from '#shared/constants/searchRoutes'
 import { CATEGORY_GROUPS } from '#shared/constants/categoryGroups'
-import { DEFAULT_CATEGORY_RUN_CONFIG } from '#shared/utils/categoryConfig'
-import type { CategoryRunConfig } from '#shared/types/categoryConfig'
+import { DEFAULT_CRON_CONFIG } from '#shared/utils/cronConfig'
+import type { CronCategoryConfig } from '#shared/types/cronConfig'
+import { DEFAULT_APP_CONFIG } from '#shared/utils/appConfig'
 import { streamBatchSearch } from '~/lib/api/search'
 import { screenshotUrl } from '~/lib/api/screenshots'
 
@@ -187,7 +188,8 @@ export const useSearchGroupsStore = defineStore('searchGroups', () => {
   async function runGroup(
     grp: CategoryGroup,
     getCfg: (srcName: string) => Record<string, unknown>,
-    categoryCfg: CategoryRunConfig = DEFAULT_CATEGORY_RUN_CONFIG,
+    categoryCfg: CronCategoryConfig = DEFAULT_CRON_CONFIG,
+    concurrency: number = DEFAULT_APP_CONFIG.concurrency,
   ) {
     if (grp.queries.length === 0) return
     grp.running = true
@@ -195,8 +197,8 @@ export const useSearchGroupsStore = defineStore('searchGroups', () => {
     grp.lastRoundId = roundId
 
     const TARGET_HITS = categoryCfg.maxSources
-    const CONCURRENCY = Math.max(1, Math.min(3, TARGET_HITS))
     const queue = grp.sources.filter(s => s.apiRoute && grp.enabled[s.name])
+    const CONCURRENCY = Math.max(1, Math.min(concurrency, queue.length))
 
     try {
       let qi = 0
@@ -205,7 +207,7 @@ export const useSearchGroupsStore = defineStore('searchGroups', () => {
 
       await new Promise<void>((resolve) => {
         function tryNext() {
-          while (active < CONCURRENCY && hits + active < TARGET_HITS && qi < queue.length) {
+          while (active < CONCURRENCY && hits < TARGET_HITS && qi < queue.length) {
             const src = queue[qi++]
             active++
             runSource(grp, src, getCfg(src.name), roundId).then(() => {

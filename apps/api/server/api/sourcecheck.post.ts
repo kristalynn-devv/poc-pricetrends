@@ -2,6 +2,7 @@ import type { SearchRouteKey } from '#shared/constants/searchRoutes'
 import { runAllSourceChecks, runSourceCheck } from '../utils/sourcecheck'
 import { appendSourceCheckRun } from '../utils/sourcecheckStore'
 import { apiError, classifyError } from '../utils/errors'
+import { readAppConfig } from '../utils/appConfigStore'
 
 defineRouteMeta({
   openAPI: {
@@ -60,9 +61,12 @@ export default defineEventHandler(async (event) => {
 
   let results
   try {
-    results = body?.source
-      ? [await runSourceCheck(body.source, baseUrl)]
-      : await runAllSourceChecks(baseUrl)
+    if (body?.source) {
+      results = [await runSourceCheck(body.source, baseUrl)]
+    } else {
+      const { concurrency } = await readAppConfig()
+      results = await runAllSourceChecks(baseUrl, concurrency)
+    }
   } catch (err) {
     const { errorType, message } = classifyError(err, 'config')
     throw apiError(500, errorType, message)

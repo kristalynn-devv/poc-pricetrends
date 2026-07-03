@@ -2,18 +2,22 @@ import { CATEGORY_GROUPS } from '#shared/constants/categoryGroups'
 import { SEARCH_ROUTE_CATEGORY } from '#shared/constants/searchRoutes'
 import type { CronCategoryConfig, CronRunLogEntry } from '#shared/types/cronConfig'
 import type { StreamEvent } from '#shared/types/stream'
+import type { SourceCfg } from '#shared/types/sourceConfig'
+import { mergeSourceConfig } from '#shared/utils/sourceConfig'
 import { appendCronRun } from './cronRunStore'
+import { readSourceConfig } from './sourceConfigStore'
+import { readAppConfig } from './appConfigStore'
 
 const CRON_TIMEOUT_MS = 120_000
 
-async function runOne(apiRoute: string, query: string, categoryId: string, limit: number, roundId: string, baseUrl: string): Promise<void> {
+async function runOne(apiRoute: string, query: string, categoryId: string, limit: number, roundId: string, baseUrl: string, screenshotConfig: SourceCfg): Promise<void> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), CRON_TIMEOUT_MS)
   try {
     const res = await fetch(`${baseUrl}${apiRoute}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, categoryId, limit, roundId }),
+      body: JSON.stringify({ query, categoryId, limit, roundId, config: screenshotConfig }),
       signal: controller.signal,
     })
     if (!res.body) return
@@ -57,10 +61,12 @@ export async function runCategoryCron(label: string, cfg: CronCategoryConfig, ba
   const sources = grp.sources.filter((s) => s.apiRoute).slice(0, cfg.maxSources)
   entry.sourceCount = sources.length
   const fallbackCategoryId = grp.ids[0] ?? ''
+  const sourceConfigMap = await readSourceConfig()
 
   const tasks = sources.flatMap((src) => cfg.queries.map((query) => ({ src, query })))
   let i = 0
-  const CONCURRENCY = Math.max(1, Math.min(3, tasks.length))
+  const { concurrency } = await readAppConfig()
+  const CONCURRENCY = Math.max(1, Math.min(concurrency, tasks.length))
   const errors: string[] = []
 
   async function worker() {
@@ -69,8 +75,12 @@ export async function runCategoryCron(label: string, cfg: CronCategoryConfig, ba
       const t = tasks[idx]
       if (!t) continue
       const categoryId = SEARCH_ROUTE_CATEGORY[t.src.apiRoute as keyof typeof SEARCH_ROUTE_CATEGORY] ?? fallbackCategoryId
+      const hasOverride = t.src.name in sourceConfigMap
+      const screenshotConfig = hasOverride
+        ? mergeSourceConfig(sourceConfigMap[t.src.name])
+        : mergeSourceConfig({ limit: cfg.itemsPerSource })
       try {
-        await runOne(t.src.apiRoute!, t.query, categoryId, cfg.itemsPerSource, roundId, baseUrl)
+        await runOne(t.src.apiRoute!, t.query, categoryId, screenshotConfig.limit, roundId, baseUrl, screenshotConfig)
       } catch (err) {
         errors.push(`${t.src.name}: ${err instanceof Error ? err.message : String(err)}`)
       }

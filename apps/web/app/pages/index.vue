@@ -14,6 +14,8 @@
           Logs</v-btn>
         <v-btn variant="text" prepend-icon="mdi-clipboard-check-outline" to="/sourcecheck" size="small"
           class="text-none">Source Check</v-btn>
+        <v-btn variant="text" prepend-icon="mdi-tune" size="small" class="text-none"
+          @click="appCfgOpen = true">Config</v-btn>
       </v-col>
     </v-row>
 
@@ -28,17 +30,14 @@
           <div class="d-flex align-center ga-1 me-2" @click.stop>
             <span class="text-caption text-medium-emphasis">{{grp.sources.filter(s => s.apiRoute).length}}/{{
               grp.sources.length }} แหล่งพร้อมใช้</span>
-            <v-btn size="small" variant="text" icon="mdi-cog-outline"
-              :color="catCfgStore.hasCustomCfg(grp.label) ? 'primary' : undefined"
-              @click.stop="openCatCfg(grp.label)" />
             <v-btn size="small" variant="text" icon="mdi-clock-outline"
               :color="cronCfgStore.getCronCfg(grp.label).enabled ? 'primary' : undefined"
               @click.stop="openCronCfg(grp.label)" />
             <template v-if="groupsStore.grpTotalItems(grp) > 0 || grp.running">
-              <v-chip size="x-small" :color="grp.running ? 'primary' : 'success'" variant="tonal">
+              <!-- <v-chip size="x-small" :color="grp.running ? 'primary' : 'success'" variant="tonal">
                 <v-progress-circular v-if="grp.running" indeterminate size="8" width="2" class="mr-1" />
                 {{ groupsStore.grpTotalItems(grp) }} รายการ
-              </v-chip>
+              </v-chip> -->
               <v-btn v-if="grp.lastRoundId && !grp.running" size="x-small" variant="tonal" color="success"
                 prepend-icon="mdi-open-in-new"
                 :to="`/entries?round=${grp.lastRoundId}&date=${new Date().toISOString().slice(0, 10)}`" @click.stop>
@@ -80,7 +79,7 @@
                 <v-btn color="primary" :loading="grp.running" height="40"
                   :disabled="grp.queries.length === 0 || !grp.sources.some(s => s.apiRoute && grp.enabled[s.name])"
                   prepend-icon="mdi-play"
-                  @click="groupsStore.runGroup(grp, getSrcCfgForGroup(grp), catCfgStore.getCategoryCfg(grp.label))">
+                  @click="groupsStore.runGroup(grp, getSrcCfgForGroup(grp), cronCfgStore.getCronCfg(grp.label), appCfgStore.cfg.concurrency)">
                   ค้นหา
                 </v-btn>
               </v-col>
@@ -140,21 +139,22 @@
     </v-expansion-panels>
 
     <SourceConfigDialog v-model="srcCfgOpen" :target="srcCfgTarget" />
-    <CategoryConfigDialog v-model="catCfgOpen" :target="catCfgTarget" />
     <CronConfigDialog v-model="cronCfgOpen" :target="cronCfgTarget" />
+    <AppConfigDialog v-model="appCfgOpen" />
     <SourceDetailDialog v-model="detailOpen" :grp-label="detailGrpLabel" :src-name="detailSrcName" />
   </v-container>
 </template>
 
 <script setup lang="ts">
 const cfgStore = useSourceConfigStore();
-const catCfgStore = useCategoryConfigStore();
 const cronCfgStore = useCronConfigStore();
+const appCfgStore = useAppConfigStore();
 const groupsStore = useSearchGroupsStore();
 
 cronCfgStore.load();
 cronCfgStore.loadRuns();
 cfgStore.load();
+appCfgStore.load();
 
 const { groups } = storeToRefs(groupsStore);
 
@@ -172,16 +172,7 @@ function openSrcCfg(name: string) {
   srcCfgOpen.value = true;
 }
 
-// ── Per-category config dialog ─────────────────────────────────────────────────
-const catCfgOpen = ref(false);
-const catCfgTarget = ref('');
-
-function openCatCfg(label: string) {
-  catCfgTarget.value = label;
-  catCfgOpen.value = true;
-}
-
-// ── Cron config dialog ─────────────────────────────────────────────────────────
+// ── Per-category config dialog (run limits + cron schedule) ─────────────────────
 const cronCfgOpen = ref(false);
 const cronCfgTarget = ref('');
 
@@ -192,13 +183,16 @@ function openCronCfg(label: string) {
 
 // getCfg ที่ให้กับ runGroup: ใช้ per-source override ถ้ามี ไม่งั้น fallback เป็น itemsPerSource ของหมวด
 function getSrcCfgForGroup(grp: any) {
-  const catCfg = catCfgStore.getCategoryCfg(grp.label);
+  const catCfg = cronCfgStore.getCronCfg(grp.label);
   return (srcName: string) => {
     const cfg = cfgStore.getSourceCfg(srcName);
     if (!cfgStore.hasCustomCfg(srcName)) return { ...cfg, limit: catCfg.itemsPerSource };
     return cfg;
   };
 }
+
+// ── App-wide config dialog (concurrency) ─────────────────────────────────────────
+const appCfgOpen = ref(false);
 
 // ── Source detail dialog ───────────────────────────────────────────────────────
 const detailOpen = ref(false);

@@ -15,6 +15,8 @@ import {
   saveSourceConfig,
   deleteSourceConfig,
   migrateSourceConfig,
+  fetchAppConfig,
+  saveAppConfig,
 } from '~/lib/api'
 
 /** Frontend API access — reads `NUXT_PUBLIC_API_BASE` for cross-origin backend. */
@@ -45,5 +47,7 @@ export function useApi() {
     saveSourceConfig: (name: string, config: Parameters<typeof saveSourceConfig>[1]) => saveSourceConfig(name, config, apiBase.value),
     deleteSourceConfig: (name: string) => deleteSourceConfig(name, apiBase.value),
     migrateSourceConfig: (configs: Parameters<typeof migrateSourceConfig>[0]) => migrateSourceConfig(configs, apiBase.value),
+    fetchAppConfig: () => fetchAppConfig(apiBase.value),
+    saveAppConfig: (config: Parameters<typeof saveAppConfig>[0]) => saveAppConfig(config, apiBase.value),
   }
 }

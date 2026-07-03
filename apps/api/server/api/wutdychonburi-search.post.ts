@@ -39,12 +39,13 @@ async function searchDetailUrls(page: import('playwright').Page, query: string, 
   return filtered.map((p) => p.url).slice(0, limit)
 }
 
-/** Fallback: loop listing pages until we have `limit` URLs */
-async function listingDetailUrls(page: import('playwright').Page, limit: number, emit: (l: 'info' | 'warn' | 'error', m: string, d?: unknown) => void): Promise<string[]> {
+/** Fallback: loop listing pages, keeping only items matching `query`, until we have `limit` URLs */
+async function listingDetailUrls(page: import('playwright').Page, query: string, limit: number, emit: (l: 'info' | 'warn' | 'error', m: string, d?: unknown) => void): Promise<string[]> {
   const collected: { url: string; title: string }[] = []
   let pageNum = 1
+  const MAX_PAGES = 20
 
-  while (collected.length < limit) {
+  while (collected.length < limit && pageNum <= MAX_PAGES) {
     const listingUrl = `${WDC_BASE}/product.php?menu=product-all&page=${pageNum}`
     emit('info', `Scanning listing page ${pageNum}`, { url: listingUrl })
     await page.goto(listingUrl, { waitUntil: 'load', timeout: 30000 })
@@ -54,11 +55,12 @@ async function listingDetailUrls(page: import('playwright').Page, limit: number,
     const links = await getDetailLinks(page)
     if (links.length === 0) { emit('info', `No more products at page ${pageNum}`); break }
 
-    for (const link of links) {
+    const matched = filterListingsByQuery(links, query)
+    for (const link of matched) {
       if (collected.length >= limit) break
       collected.push(link)
     }
-    emit('info', `Page ${pageNum}: ${links.length} links, collected ${collected.length}`)
+    emit('info', `Page ${pageNum}: ${links.length} links, ${matched.length} match query, collected ${collected.length}`)
     pageNum++
   }
 
@@ -145,7 +147,7 @@ export default defineEventHandler(async (event) => {
         let detailUrls = await searchDetailUrls(page, query, limit, emit)
         if (detailUrls.length === 0) {
           emit('info', 'Search returned nothing, falling back to listing pages')
-          detailUrls = await listingDetailUrls(page, limit, emit)
+          detailUrls = await listingDetailUrls(page, query, limit, emit)
         }
 
         if (detailUrls.length === 0) {

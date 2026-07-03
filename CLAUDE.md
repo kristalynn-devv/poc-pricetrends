@@ -105,12 +105,22 @@ Source list ทั้งหมดนิยามใน `packages/shared/constant
   - **frontend** → `useCategoryFields.ts` composable (สำหรับ UI required/optional fields)
   - อย่านิยาม field list ซ้ำในที่อื่น
 
-**Category run config** (จำนวน source และจำนวนชิ้น/source ต่อหมวด):
-- `packages/shared/types/categoryConfig.ts` — `CategoryRunConfig { maxSources, itemsPerSource }`
-- `packages/shared/utils/categoryConfig.ts` — `DEFAULT_CATEGORY_RUN_CONFIG` (maxSources=3, itemsPerSource=1) + `mergeCategoryRunConfig()` helper กลาง (pattern เดียวกับ `screenshotConfig.ts`)
-- `apps/web/app/stores/categoryConfig.ts` — `useCategoryConfigStore()`: persist ต่อหมวด (key = `grp.label`) ใน localStorage (`categoryRunConfigs_v1`) — ยังเป็น localStorage อยู่ (ไม่เหมือน `useSourceConfigStore` ที่ย้ายไปเก็บฝั่ง server แล้ว)
-- UI: ปุ่มเฟือง (⚙ `mdi-cog-outline`) ที่หัว panel แต่ละหมวดใน `index.vue` เปิด dialog ตั้ง `maxSources` (จำกัดจำนวน source ที่ดึงต่อรอบ — แทนค่าคงที่ `TARGET_HITS`/`CONCURRENCY` เดิมใน `runGroup()`) และ `itemsPerSource` (ค่า default ของ `limit` ต่อ source เมื่อ source นั้นไม่มี per-source override จาก `useSourceConfigStore`)
-- `searchGroups.ts` → `runGroup(grp, getCfg, categoryCfg)` รับ `CategoryRunConfig` เป็น param ที่ 3 (default `DEFAULT_CATEGORY_RUN_CONFIG`)
+**Category config** (`CronCategoryConfig` — single source of truth ของ `maxSources`/`itemsPerSource`/cron schedule ต่อหมวด, รวม manual run + cron config ไว้ที่เดียว, server-side ทั้งหมด — เดิมมี `CategoryRunConfig` แยกต่างหากเก็บ localStorage สำหรับ manual run เท่านั้น ถูกลบทิ้งแล้วเพราะ field ซ้ำกับ cron config และไม่ sync กัน):
+- `packages/shared/types/cronConfig.ts` — `CronCategoryConfig { enabled, cronExpression, queries, maxSources, itemsPerSource }`
+- `packages/shared/utils/cronConfig.ts` — `DEFAULT_CRON_CONFIG` (disabled, `0 8 * * *`, maxSources=3, itemsPerSource=1) + `mergeCronConfig()` + `isValidCronExpression()`
+- `apps/api/server/utils/cronConfigStore.ts` — persist config ต่อหมวดที่ `apps/api/output/cron-config.json`
+- `apps/api/server/api/cron-config.get.ts` / `.post.ts` — อ่าน/บันทึก config ต่อหมวด, POST เรียก `scheduleCategory()` ทันทีเพื่อ reschedule โดยไม่ต้อง restart server
+- `apps/web/app/stores/cronConfig.ts` — `useCronConfigStore()`: fetch/save ผ่าน API (ไม่ใช่ localStorage เพราะ cron ต้องรันฝั่ง server แม้ไม่มี browser เปิดอยู่) — ใช้ทั้งตอน manual run (`searchGroups.ts` → `runGroup(grp, getCfg, categoryCfg)` รับ `CronCategoryConfig` เป็น param ที่ 3, default `DEFAULT_CRON_CONFIG`) และ cron
+- UI: ปุ่มเฟือง (⚙ `mdi-cog-outline`) เดียวที่หัว panel แต่ละหมวดใน `index.vue` เปิด `CronConfigDialog.vue` ตั้งค่า enable/cron expression/query list/`maxSources`/`itemsPerSource` ในที่เดียว (มี Reset กลับ `DEFAULT_CRON_CONFIG`) + แสดงประวัติรันล่าสุดของหมวดนั้น — ใช้ค่าเดียวกันทั้ง manual run และ cron run
+
+**App config** (`AppConfig` — ตั้งค่า global ระดับแอป ไม่ผูกกับหมวดใดหมวดหนึ่ง, server-side, ใช้ร่วมกันทุกที่ที่รัน source แบบขนาน):
+- `packages/shared/types/appConfig.ts` — `AppConfig { concurrency }` (จำนวน source ที่รันพร้อมกันได้สูงสุดต่อหมวด)
+- `packages/shared/utils/appConfig.ts` — `DEFAULT_APP_CONFIG` (concurrency=3) + `mergeAppConfig()`
+- `apps/api/server/utils/appConfigStore.ts` — persist ที่ `apps/api/output/app-config.json`
+- `apps/api/server/api/app-config.get.ts` / `.post.ts` — อ่าน/บันทึก
+- `apps/web/app/stores/appConfig.ts` — `useAppConfigStore()`: fetch/save ผ่าน API
+- UI: ปุ่ม (`mdi-tune`, label "Config") เปิด `AppConfigDialog.vue` — มี 2 จุด: หัวหน้า `index.vue` (ข้างปุ่ม Source Check) และหัวหน้า `sourcecheck.vue` (ข้างปุ่ม กลับหน้าหลัก)
+- ใช้ร่วมกัน 3 ที่: manual run (`searchGroups.ts` → `runGroup(grp, getCfg, categoryCfg, concurrency)` รับ concurrency เป็น param ที่ 4, ส่งมาจาก `appCfgStore.cfg.concurrency` ใน `index.vue`), cron (`cronRunner.ts` อ่าน `readAppConfig()` แทนค่าคงที่ 3 เดิม), source check (`sourcecheck.post.ts` อ่าน `readAppConfig()` แล้วส่งเป็น `concurrency` ให้ `runAllSourceChecks()` — เดิม hardcode 1 เสมอ)
 
 **Category groups** (`packages/shared/constants/categoryGroups.ts`):
 - `CATEGORY_GROUPS` — **single source of truth** ของ label/ids/sources ต่อหมวด ใช้ร่วมกันทั้ง client (`useSearchGroupsStore().init()`) และ server (`cronRunner.ts`)
@@ -118,16 +128,10 @@ Source list ทั้งหมดนิยามใน `packages/shared/constant
 
 **Cron (รันค้นหาอัตโนมัติตามตารางเวลา):**
 - กลไก: `node-cron` ฝังใน Nitro server plugin — รันอยู่ใน process เดียวกับ `apps/api` (`pnpm dev:api`/`pnpm --filter poc-pricetrends-api preview`) เท่านั้น (ไม่ใช่ Windows Task Scheduler แยกต่างหาก, backend process ต้องเปิดค้างไว้ถึงจะ trigger — ไม่ขึ้นกับว่า apps/web เปิดอยู่หรือไม่)
-- `packages/shared/types/cronConfig.ts` — `CronCategoryConfig { enabled, cronExpression, queries, maxSources, itemsPerSource }`
-- `packages/shared/utils/cronConfig.ts` — `DEFAULT_CRON_CONFIG` (disabled, `0 8 * * *`) + `mergeCronConfig()` + `isValidCronExpression()`
-- `apps/api/server/utils/cronConfigStore.ts` — persist cron config ต่อหมวดที่ `apps/api/output/cron-config.json`
-- `apps/api/server/utils/cronRunner.ts` — `runCategoryCron(label, cfg, baseUrl)`: เรียก search route จริงของแต่ละ source (จำกัดที่ `cfg.maxSources`) × ทุก query ใน `cfg.queries`, จำนวนพร้อมกัน 1–3 — แต่ละ route persist ผลลัพธ์ของตัวเองอยู่แล้ว (`persistExtraction`), cronRunner แค่ drain NDJSON stream ให้ครบ (pattern เดียวกับ `sourcecheck.ts`)
+- `apps/api/server/utils/cronRunner.ts` — `runCategoryCron(label, cfg, baseUrl)`: เรียก search route จริงของแต่ละ source (จำกัดที่ `cfg.maxSources`) × ทุก query ใน `cfg.queries`, จำนวนพร้อมกัน 1–3 — แต่ละ route persist ผลลัพธ์ของตัวเองอยู่แล้ว (`persistExtraction`), cronRunner แค่ drain NDJSON stream ให้ครบ (pattern เดียวกับ `sourcecheck.ts`) — อ่าน per-source `SourceCfg` จาก `sourceConfigStore.readSourceConfig()` แล้วส่งเป็น `config` ใน request body เดียวกับที่ manual run ส่ง (เดิม cron ไม่ส่งค่านี้ ทำให้ per-source screenshot override ถูกทิ้งเงียบๆ ตอนรัน cron — แก้แล้ว)
 - `apps/api/server/utils/cronRunStore.ts` — บันทึกประวัติการรัน (`CronRunLogEntry`) ที่ `apps/api/output/cron-runs/YYYYMMDD.jsonl`
 - `apps/api/server/utils/cronScheduler.ts` — `scheduleCategory(label)` (register/reschedule 1 หมวด) + `initCronScheduler()` (เรียกตอน server start จาก `server/plugins/cron.ts`); internal fetch ใช้ `http://localhost:${PORT}` (default 8080)
-- `apps/api/server/api/cron-config.get.ts` / `.post.ts` — อ่าน/บันทึก config ต่อหมวด, POST เรียก `scheduleCategory()` ทันทีเพื่อ reschedule โดยไม่ต้อง restart server
 - `apps/api/server/api/cron-runs.get.ts` — ประวัติการรันล่าสุด
-- UI: ปุ่มนาฬิกา (🕐 `mdi-clock-outline`) ที่หัว panel แต่ละหมวดใน `index.vue` เปิด dialog ตั้ง enable/cron expression/query list/maxSources/itemsPerSource + แสดงประวัติรันล่าสุดของหมวดนั้น
-- `apps/web/app/stores/cronConfig.ts` — `useCronConfigStore()`: fetch/save ผ่าน API (ไม่ใช่ localStorage เพราะ cron ต้องรันฝั่ง server แม้ไม่มี browser เปิดอยู่)
 
 **Per-source screenshot/limit config** (viewport/quality/crop/limit ต่อ source — ปุ่มเฟือง `mdi-tune` ต่อแถวใน `index.vue`):
 - `packages/shared/types/sourceConfig.ts` — `SourceCfg { viewportWidth, viewportHeight, quality, cropHeight?, clip, limit }`
@@ -176,7 +180,7 @@ Source list ทั้งหมดนิยามใน `packages/shared/constant
 - `apps/api/server/utils/persistExtraction.ts` — `persistExtraction()`: บันทึก `appendResult` + `appendLog` success ในครั้งเดียว
 - `apps/api/server/utils/resultsStore.ts` — `appendResult()` / `readDailyResults()`: เขียน/อ่าน `output/results/YYYYMMDD.jsonl`
   - `ResultEntry` มี `roundId?` (batch run ID) และ `searchQuery?` สำหรับ group ผลลัพธ์
-- `apps/api/server/utils/sourcecheck.ts` — `runSourceCheck()` / `runAllSourceChecks()`: เรียก search route จริงของแต่ละ source (query ตัวอย่างต่อหมวดใน `SOURCECHECK_QUERIES`, `limit: 1`, concurrency 1) โดยแปะ `?sourceCheck=1` ต่อท้าย URL แล้วอ่าน NDJSON stream เพื่อสรุป pass/fail (เจอสินค้า + ถ่ายภาพได้)
+- `apps/api/server/utils/sourcecheck.ts` — `runSourceCheck()` / `runAllSourceChecks()`: เรียก search route จริงของแต่ละ source (query ตัวอย่างต่อหมวดใน `SOURCECHECK_QUERIES`, `limit: 1`, concurrency จาก `AppConfig.concurrency` — ดู "App config" ด้านบน) โดยแปะ `?sourceCheck=1` ต่อท้าย URL แล้วอ่าน NDJSON stream เพื่อสรุป pass/fail (เจอสินค้า + ถ่ายภาพได้)
 - `apps/api/server/utils/sourcecheckStore.ts` — `appendSourceCheckRun()` / `readLatestSourceCheckRun()` / `readSourceCheckRunsByDate(date)` / `listSourceCheckDates()`: เขียน/อ่าน `output/sourcecheck/YYYYMMDD.jsonl` (1 บรรทัด = 1 run, วันนึงมีได้หลาย run)
 - **Log แยกจากของจริง**: `?sourceCheck=1` ทำให้ `server/middleware/sourceCheckContext.ts` ตั้ง flag แบบ request-scoped ผ่าน `AsyncLocalStorage` (`server/utils/sourceCheckContext.ts`) — `appendLog()` (`logger.ts`) และ `appendResult()` (`resultsStore.ts`) เช็ค flag นี้แล้ว skip การเขียนถ้าเป็น source-check request ผลคือรัน sourcecheck ไม่ปนกับ `output/logs/`/`output/results/` จริง (แต่ยังถ่าย screenshot ไฟล์จริงเหมือนเดิม เพราะต้องทดสอบของจริง) — ทำแบบนี้เพื่อไม่ต้องแก้ทุก route ไฟล์ (17 ไฟล์) ที่เรียก `appendLog`/`persistExtraction` ตรงๆ
 - หน้า `/sourcecheck` (`apps/web/app/pages/sourcecheck.vue`, state เก็บใน `useSourceCheckStore` เพื่อไม่ให้หายตอนเปลี่ยนหน้า) — ปุ่มตรวจสอบ source ทั้งหมด + ตารางผลล่าสุด + ส่วนดูประวัติย้อนหลัง (date picker เหมือน `/logs`, ดึงจาก `GET /api/sourcecheck/history?date=`) ตารางผลใช้ component ร่วม `apps/web/app/components/SourceCheckResultTable.vue` (ตรวจ+รายงานเท่านั้น ไม่แก้ไข code อัตโนมัติ)
@@ -245,8 +249,7 @@ packages/shared/        # plain TS, ไม่มี build step, import ผ่า
 - `apps/web/app/components/ScreenshotImg.vue` — แสดงภาพ screenshot พร้อม lightbox (thumbnail + full preview)
 - `apps/web/app/components/SourceCheckResultTable.vue` — ตาราง pass/fail ต่อ source ใช้ร่วมกันทั้งส่วน "ผลล่าสุด" และ "ประวัติย้อนหลัง" ในหน้า `/sourcecheck`
 - `apps/web/app/components/SourceConfigDialog.vue` — dialog ตั้งค่า screenshot config ต่อ source (ปุ่มเฟือง `mdi-tune` ต่อแถว) ใช้ `useSourceConfigStore`
-- `apps/web/app/components/CategoryConfigDialog.vue` — dialog ตั้งค่า `maxSources`/`itemsPerSource` ต่อหมวด (ปุ่มเฟือง `mdi-cog-outline` หัว panel) ใช้ `useCategoryConfigStore`
-- `apps/web/app/components/CronConfigDialog.vue` — dialog ตั้งค่า cron ต่อหมวด + ประวัติการรันล่าสุด (ปุ่มนาฬิกา `mdi-clock-outline` หัว panel) ใช้ `useCronConfigStore`
+- `apps/web/app/components/CronConfigDialog.vue` — dialog ตั้งค่า `maxSources`/`itemsPerSource`/cron ต่อหมวด (รวมกันในที่เดียว) + ประวัติการรันล่าสุด (ปุ่มเฟือง `mdi-cog-outline` หัว panel) ใช้ `useCronConfigStore`
 - `apps/web/app/components/SourceDetailDialog.vue` — dialog full-screen แสดงผลลัพธ์ + terminal log ต่อ source (เปิดจากการคลิกแถวใน `index.vue`)
   - `index.vue` เหลือแค่ orchestration state (dialog ไหนเปิดอยู่ target อะไร) — ลอจิกจริงของแต่ละ dialog อยู่ในไฟล์ข้างต้น อย่าย้าย logic กลับเข้า `index.vue`
 - `apps/web/app/composables/useCategoryFields.ts` — ข้อมูล required/optional fields ต่อ category (Nuxt auto-import)

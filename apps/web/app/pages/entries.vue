@@ -48,14 +48,8 @@
 
     <v-progress-linear v-if="entriesLoading" indeterminate color="primary" class="mb-4" rounded />
 
-    <v-alert
-      v-if="entriesFetchError"
-      :text="entriesFetchError"
-      type="error"
-      class="mb-4"
-      closable
-      @click:close="entriesFetchError = null"
-    />
+    <v-alert v-if="entriesFetchError" :text="entriesFetchError" type="error" class="mb-4" closable
+      @click:close="entriesFetchError = null" />
 
     <!-- Empty state -->
     <v-card v-if="!entriesLoading && resultEntries.length === 0" rounded="lg">
@@ -98,7 +92,7 @@
                   <v-card rounded="lg" variant="tonal" color="secondary">
                     <v-card-text class="text-center pa-3">
                       <div class="text-h5 font-weight-bold">{{ roundStats(round).sources }}</div>
-                      <div class="text-caption">แหล่งข้อมูล</div>
+                      <div class="text-caption">แหล่งข้อมูลรวม</div>
                     </v-card-text>
                   </v-card>
                 </v-col>
@@ -114,20 +108,17 @@
 
               <!-- Categories -->
               <v-expansion-panels v-model="openCategoryPanels" multiple variant="accordion">
-                <v-expansion-panel v-for="catGroup in round.byCategory" :key="catGroup.categoryId" rounded="lg"
-                  elevation="1">
+                <v-expansion-panel v-for="catGroup in round.byCategory" :key="catGroup.categoryId"
+                  class="bg-grey-lighten-3 rounded-lg" elevation="0">
                   <v-expansion-panel-title>
                     <v-icon class="me-2" size="small" color="primary">mdi-tag-multiple-outline</v-icon>
                     <span class="font-weight-medium">{{ catLabel(catGroup.categoryId) }}</span>
                     <v-spacer />
                     <div class="d-flex align-center ga-1 me-2" @click.stop>
-                      <v-chip size="x-small" color="primary" variant="tonal">
+                      <v-chip size="x-small" variant="tonal">
                         {{catGroupEntries(catGroup).flatMap(e => e.items).length}} รายการ
                       </v-chip>
-                      <v-chip size="x-small" variant="tonal">
-                        {{ catGroupEntries(catGroup).length }} แหล่ง
-                      </v-chip>
-                      <v-chip v-if="catGroup.byQuery.length > 1" size="x-small" variant="tonal" color="secondary">
+                      <v-chip v-if="catGroup.byQuery.length > 1" size="x-small" variant="tonal">
                         {{ catGroup.byQuery.length }} คำค้น
                       </v-chip>
                     </div>
@@ -137,8 +128,8 @@
                     <v-expansion-panels :model-value="openQueryPanelsFor(catGroup)" multiple variant="accordion"
                       @update:model-value="setOpenQueryPanels(catGroup, $event)">
                       <v-expansion-panel v-for="(queryGroup, qi) in catGroup.byQuery"
-                        :key="queryGroup.query || `__none__${qi}`">
-                        <v-expansion-panel-title class="px-4 py-2">
+                        :key="queryGroup.query || `__none__${qi}`" class="rounded-lg" elevation="0">
+                        <v-expansion-panel-title>
                           <v-icon class="me-2" size="small" color="primary">mdi-magnify</v-icon>
                           <span class=" font-weight-medium">
                             {{ queryGroup.query || 'ไม่ระบุคำค้น' }}
@@ -149,7 +140,7 @@
                               {{queryGroup.entries.flatMap(e => e.items).length}} รายการ
                             </v-chip>
                             <v-chip size="x-small" variant="tonal">
-                              {{ queryGroup.entries.length }} แหล่ง
+                              พบ {{ uniqueSourceCount(queryGroup.entries) }} แหล่ง
                             </v-chip>
                           </div>
                         </v-expansion-panel-title>
@@ -230,18 +221,6 @@ function setOpenQueryPanels(catGroup: CatGroup, val: number | number[]) {
   openQueryPanels.value[queryPanelsKey(catGroup)] = Array.isArray(val) ? val : [val];
 }
 
-function syncOpenQueryPanels() {
-  const round = activeRound();
-  if (!round) return;
-  for (const cat of round.byCategory) {
-    const key = `${round.roundId}:${cat.categoryId}`;
-    const existing = openQueryPanels.value[key];
-    if (!existing || existing.length !== cat.byQuery.length) {
-      openQueryPanels.value[key] = cat.byQuery.map((_, i) => i);
-    }
-  }
-}
-
 const datePickerDate = computed({
   get: () => new Date(selectedDate.value + 'T00:00:00'),
   set: (val: Date) => {
@@ -267,11 +246,15 @@ function catGroupEntries(catGroup: CatGroup) {
   return catGroup.byQuery.flatMap(q => q.entries);
 }
 
+function uniqueSourceCount(entries: ResultEntry[]) {
+  return new Set(entries.map(e => e.source)).size;
+}
+
 function roundStats(round: Round) {
   const entries = round.byCategory.flatMap(c => catGroupEntries(c));
   return {
     items: entries.flatMap(e => e.items).length,
-    sources: entries.length,
+    sources: uniqueSourceCount(entries),
     categories: round.byCategory.length,
   };
 }
@@ -285,7 +268,6 @@ watch(rounds, (newRounds) => {
 
 watch([selectedRound, rounds], () => {
   syncOpenCategoryPanels();
-  syncOpenQueryPanels();
 }, { immediate: true });
 
 function catLabel(id: string | null) {

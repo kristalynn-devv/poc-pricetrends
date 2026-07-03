@@ -107,15 +107,19 @@ export default defineEventHandler(async (event) => {
           await page.waitForTimeout(300)
           await searchInput.fill(query)
           await page.waitForTimeout(300)
-          await page.keyboard.press('Enter')
-          await page.waitForLoadState('load', { timeout: 20000 })
+          // Search submit is a delayed client-side redirect, not a native form submit —
+          // waitForLoadState('load') races it and resolves against the stale homepage.
+          await Promise.all([
+            page.waitForURL(/product-list/, { timeout: 20000 }),
+            page.keyboard.press('Enter'),
+          ])
           await page.waitForTimeout(2000)
           searchUrl = page.url()
           emit('info', `Search submitted`, { resultUrl: searchUrl })
           await dismissCookieBanner(page)
 
-          // Collect product links — komehyo product URLs are numeric IDs (/th/product/12345), no slug
-          const productUrlRe = /\/th\/product\/\d+/
+          // Collect product links — path is /product/<id>-<slug>/, with or without a /th/ locale prefix
+          const productUrlRe = /\/(th\/)?product\/\d+/
           const allPairs = await page.locator('a[href]').evaluateAll((els) => (els as HTMLAnchorElement[]).map((a) => ({ url: a.href, title: a.textContent?.trim() ?? '' })))
           const allProductPairs = [...new Map(allPairs.filter((p) =>
             p.url.includes('komehyo.co.th') && productUrlRe.test(p.url)
