@@ -7,6 +7,7 @@
       </v-col>
       <v-col cols="auto" class="d-flex ga-1">
         <v-btn variant="text" prepend-icon="mdi-table-eye" to="/entries" size="small">รายการข้อมูล</v-btn>
+        <v-btn variant="text" prepend-icon="mdi-chart-line" to="/token-stats" size="small" class="text-none">Token Usage</v-btn>
         <v-btn variant="text" prepend-icon="mdi-arrow-left" to="/" size="small">กลับหน้าหลัก</v-btn>
       </v-col>
     </v-row>
@@ -77,8 +78,13 @@
                     <div class="text-caption text-medium-emphasis">Output tokens</div>
                     <div class="text-h6 font-weight-bold">{{ summary.totalOutputTokens?.toLocaleString() ?? '-' }}</div>
                   </div>
+                  <v-divider vertical class="mx-3" />
+                  <div>
+                    <div class="text-caption text-medium-emphasis">ประมาณค่าใช้จ่าย</div>
+                    <div class="text-h6 font-weight-bold">{{ estimatedCost }}</div>
+                  </div>
                 </div>
-                <div class="text-caption text-medium-emphasis mt-1">Gemini tokens วันนี้</div>
+                <div class="text-caption text-medium-emphasis mt-1">Gemini tokens วันนี้ · $0.25/$1.50 per 1M · ≈36 ฿/$</div>
               </v-card-text>
             </v-card>
           </v-col>
@@ -298,6 +304,15 @@ const entryHeaders = [
   { title: 'ms', key: 'durationMs', width: 90 },
   { title: 'in/out tokens', key: 'tokens', width: 130 },
 ];
+
+const estimatedCost = computed(() => {
+  const inTok = summary.value?.totalInputTokens ?? 0
+  const outTok = summary.value?.totalOutputTokens ?? 0
+  if (!inTok && !outTok) return '-'
+  const usd = (inTok * 0.25 + outTok * 1.50) / 1_000_000
+  const thb = usd * 36
+  return thb < 1 ? `${(thb * 100).toFixed(2)} สต.` : `${thb.toFixed(2)} ฿`
+})
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
