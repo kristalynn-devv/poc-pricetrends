@@ -5,7 +5,7 @@ import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog } from '../utils/logger'
 import { persistExtraction } from '../utils/persistExtraction'
-import { createStealthContext, dismissCookieBanner, takeScreenshot, filterListingsByQuery, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
+import { createStealthContext, dismissCookieBanner, takeScreenshot, filterListingsByQuery, runConcurrently, preparePageForScreenshot, VARIANT_MODIFIER_WORDS } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
 import { buildScreenshotFilename } from '../utils/filename'
@@ -109,9 +109,12 @@ export default defineEventHandler(async (event) => {
           emit('info', `Raw product URLs on page`, { count: allProductPairs.length })
 
           const queryTerms = query.toLowerCase().split(/\s+/).filter(Boolean)
+          const queryTermSet = new Set(queryTerms)
           const slugMatched = allProductPairs.filter((p) => {
             const slug = decodeURIComponent(p.url).toLowerCase()
-            return queryTerms.every((t) => slug.includes(t))
+            if (!queryTerms.every((t) => slug.includes(t))) return false
+            const slugWords = slug.split(/[^a-z0-9]+/).filter(Boolean)
+            return !slugWords.some((w) => VARIANT_MODIFIER_WORDS.has(w) && !queryTermSet.has(w))
           })
           const titleFiltered = filterListingsByQuery(allProductPairs, query)
           const matched = slugMatched.length > 0 ? slugMatched : titleFiltered

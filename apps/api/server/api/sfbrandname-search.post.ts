@@ -5,7 +5,7 @@ import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog } from '../utils/logger'
 import { persistExtraction } from '../utils/persistExtraction'
-import { createStealthContext, dismissCookieBanner, takeScreenshot, filterListingsByQuery, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
+import { createStealthContext, dismissCookieBanner, takeScreenshot, filterListingsByQuery, runConcurrently, preparePageForScreenshot, VARIANT_MODIFIER_WORDS } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
 import { buildScreenshotFilename } from '../utils/filename'
@@ -107,11 +107,14 @@ export default defineEventHandler(async (event) => {
           await dismissCookieBanner(page)
 
           const queryTerms = query.toLowerCase().split(/\s+/).filter(Boolean)
+          const queryTermSet = new Set(queryTerms)
           const allHrefPairs = await page.locator('a[href]').evaluateAll((els) => (els as HTMLAnchorElement[]).map((a) => ({ url: a.href, title: a.textContent?.trim() ?? '' })))
           const productPairs = [...new Map(allHrefPairs.filter((p) => PRODUCT_URL_RE.test(p.url)).map((p) => [p.url, p])).values()]
           const slugMatched = productPairs.filter((p) => {
             const slug = decodeURIComponent(p.url).toLowerCase()
-            return queryTerms.every((t) => slug.includes(t))
+            if (!queryTerms.every((t) => slug.includes(t))) return false
+            const slugWords = slug.split(/[^a-z0-9]+/).filter(Boolean)
+            return !slugWords.some((w) => VARIANT_MODIFIER_WORDS.has(w) && !queryTermSet.has(w))
           })
           const titleFiltered = filterListingsByQuery(productPairs, query)
           const matched = slugMatched.length > 0 ? slugMatched : titleFiltered
@@ -125,7 +128,9 @@ export default defineEventHandler(async (event) => {
             const allMatches = [...new Set([...pageText.matchAll(/href="(\/co\d+[^"]*?)"/g)].map((m) => `${SFB_BASE}${m[1]}`))]
             const filtered = allMatches.filter((h) => {
               const slug = decodeURIComponent(h).toLowerCase()
-              return queryTerms.every((t) => slug.includes(t))
+              if (!queryTerms.every((t) => slug.includes(t))) return false
+              const slugWords = slug.split(/[^a-z0-9]+/).filter(Boolean)
+              return !slugWords.some((w) => VARIANT_MODIFIER_WORDS.has(w) && !queryTermSet.has(w))
             })
             listingUrls = (filtered.length > 0 ? filtered : allMatches).slice(0, limit)
             emit(listingUrls.length > 0 ? 'info' : 'warn', `HTML scan: ${listingUrls.length} product URLs`)

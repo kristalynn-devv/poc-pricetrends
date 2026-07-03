@@ -200,8 +200,79 @@ export async function runConcurrently<T>(
   return results
 }
 
+/** Model-variant qualifier words — a listing carrying one of these that the query didn't ask for
+ * is a different product (e.g. "iphone 16 pro" must not match "iphone 16 pro max"). */
+export const VARIANT_MODIFIER_WORDS = new Set(['max', 'plus', 'mini', 'ultra', 'se'])
+
 /**
- * Filter listing items by requiring ALL query keywords to appear in url or title (case-insensitive).
+ * After clicking a variant control, the page's price/image often re-renders via AJAX rather than
+ * instantly — a fixed short delay risks screenshotting before that re-render finishes (stale price).
+ * Wait for the on-page "selected value" badge to actually show the new option before proceeding;
+ * fall back to a fixed delay if the site has no such badge or it never updates.
+ */
+async function waitForVariantReflected(page: Page, optionValue: string): Promise<void> {
+  const reflected = await page.waitForFunction(
+    (val: string) => {
+      const el = document.querySelector('.product-form__selected-value, [class*="selected-value"]')
+      return (el?.textContent ?? '').trim().toUpperCase().includes(val.toUpperCase())
+    },
+    optionValue,
+    { timeout: 5000 },
+  ).then(() => true).catch(() => false)
+  await page.waitForTimeout(reflected ? 400 : 1200)
+}
+
+export type VariantSelectResult = 'selected' | 'unavailable' | 'not_found'
+
+/**
+ * Select a variant/option (e.g. storage capacity "256GB") on a product detail page that shows one URL
+ * for all variants and requires a UI click to switch. Handles the common Shopify swatch pattern where
+ * the real input is `<input type="radio" value="...">` paired with `<label for="...">` — clicking the
+ * input's own hidden text is unreliable since sold-out labels carry extra hidden text (e.g. "หมด").
+ * Sold-out swatches are still selected (we need the price shown for that variant, not just in-stock
+ * ones): a native click is tried first, and if the swatch blocks pointer events (disabled), the radio's
+ * checked state is forced directly via JS so the page's price/image still re-renders for that variant.
+ * Falls back to a plain button/data-value text match for sites that don't use the radio+label pattern.
+ */
+export async function selectVariantOption(page: Page, optionValue: string): Promise<VariantSelectResult> {
+  const escaped = optionValue.replace(/"/g, '\\"')
+  const input = page.locator(`input[value="${escaped}" i]`).first()
+
+  if (await input.count() > 0) {
+    const id = await input.getAttribute('id')
+    const label = id ? page.locator(`label[for="${id}"]`) : null
+
+    try {
+      if (label && await label.count() > 0) await label.click({ timeout: 3000, force: true })
+      else await input.click({ timeout: 3000, force: true })
+    } catch { /* native click can be blocked on sold-out swatches; fall through to forced selection below */ }
+
+    if (!(await input.isChecked().catch(() => false))) {
+      await input.evaluate((el) => {
+        (el as HTMLInputElement).checked = true
+        el.dispatchEvent(new Event('input', { bubbles: true }))
+        el.dispatchEvent(new Event('change', { bubbles: true }))
+      }).catch(() => {})
+    }
+
+    await waitForVariantReflected(page, optionValue)
+    return (await input.isChecked().catch(() => false)) ? 'selected' : 'unavailable'
+  }
+
+  const fallback = page.locator(`button:text-is("${escaped}"), [data-value="${escaped}" i]`).first()
+  if (await fallback.count() === 0) return 'not_found'
+  try {
+    await fallback.click({ timeout: 3000, force: true })
+    await waitForVariantReflected(page, optionValue)
+    return 'selected'
+  } catch {
+    return 'not_found'
+  }
+}
+
+/**
+ * Filter listing items by requiring ALL query keywords to appear in url or title (case-insensitive),
+ * and rejecting listings that carry an unrequested variant modifier (Max/Plus/Mini/Ultra/SE).
  * Use before scraping detail pages to avoid wasting resources on off-topic results.
  */
 export function filterListingsByQuery(
@@ -210,8 +281,11 @@ export function filterListingsByQuery(
 ): { url: string; title: string }[] {
   const keywords = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
   if (keywords.length === 0) return items
+  const keywordSet = new Set(keywords)
   return items.filter(({ url, title }) => {
     const haystack = (title + ' ' + decodeURIComponent(url)).toLowerCase()
-    return keywords.every((kw) => haystack.includes(kw))
+    if (!keywords.every((kw) => haystack.includes(kw))) return false
+    const haystackWords = haystack.split(/[^a-z0-9]+/).filter(Boolean)
+    return !haystackWords.some((w) => VARIANT_MODIFIER_WORDS.has(w) && !keywordSet.has(w))
   })
 }

@@ -5,12 +5,22 @@ import { writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendLog } from '../utils/logger'
 import { persistExtraction } from '../utils/persistExtraction'
-import { createStealthContext, dismissCookieBanner, takeScreenshot, filterListingsByQuery, runConcurrently, preparePageForScreenshot } from '../utils/browserUtils'
+import { createStealthContext, dismissCookieBanner, takeScreenshot, filterListingsByQuery, runConcurrently, preparePageForScreenshot, selectVariantOption, VARIANT_MODIFIER_WORDS } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
 import { buildScreenshotFilename } from '../utils/filename'
 
 const CPA_BASE = 'https://compasia.co.th'
+
+/** Extract a storage capacity label (e.g. "256GB", "1TB") from a search query, if present. */
+function parseStorageLabel(query: string): string | null {
+  const q = query.toLowerCase()
+  const tbMatch = q.match(/(\d+)\s*tb\b/)
+  if (tbMatch) return `${tbMatch[1]}TB`
+  const gbMatch = q.match(/\b(\d{3,4})\s*(gb)?\b/)
+  if (gbMatch) return `${gbMatch[1]}GB`
+  return null
+}
 
 function buildFilename(index: number, url: string): string {
   const slugMatch = url.replace(/[?#].*$/, '').replace(/\/$/, '').match(/\/([^/]+)$/)
@@ -112,11 +122,15 @@ export default defineEventHandler(async (event) => {
           const normalizedQuery = query.toLowerCase().replace(/promax/g, 'pro max')
           const queryTerms = normalizedQuery.split(/\s+/).filter(Boolean)
 
-          // Filter: slug must contain all query terms (ignore storage sizes 3+ digits like 128/256/512)
+          // Filter: slug must contain all query terms (ignore storage sizes 3+ digits like 128/256/512),
+          // and must not carry an unrequested variant modifier (e.g. "pro" query must reject "pro max")
           const nonStorageTerms = queryTerms.filter((t) => !/^\d{3,}$/.test(t))
+          const nonStorageTermSet = new Set(nonStorageTerms)
           const slugMatched = allProductPairs.filter((p) => {
             const slug = decodeURIComponent(p.url).toLowerCase()
-            return nonStorageTerms.every((t) => slug.includes(t))
+            if (!nonStorageTerms.every((t) => slug.includes(t))) return false
+            const slugWords = slug.split(/[^a-z0-9]+/).filter(Boolean)
+            return !slugWords.some((w) => VARIANT_MODIFIER_WORDS.has(w) && !nonStorageTermSet.has(w))
           })
           // Also apply title+url keyword filter
           const titleFiltered = filterListingsByQuery(allProductPairs, query)
@@ -163,6 +177,13 @@ export default defineEventHandler(async (event) => {
           try {
             await page.goto(url, { waitUntil: 'load', timeout: 30000 })
             await page.waitForTimeout(2500)
+            const storageLabel = parseStorageLabel(query)
+            if (storageLabel) {
+              const variantResult = await selectVariantOption(page, storageLabel)
+              if (variantResult === 'selected') emit('info', `[${i + 1}] Selected storage variant`, { storageLabel })
+              else if (variantResult === 'unavailable') emit('warn', `[${i + 1}] Could not select storage variant (may be sold out), screenshotting default variant`, { storageLabel })
+              else emit('warn', `[${i + 1}] Storage variant control not found`, { storageLabel })
+            }
             await preparePageForScreenshot(page)
             const buffer = await takeScreenshot(page, screenshotCfg)
             base64 = buffer.toString('base64')

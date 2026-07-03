@@ -8,7 +8,7 @@ import { apiError, classifyError } from '../utils/errors'
 import { persistExtraction } from '../utils/persistExtraction'
 import type { ScreenshotConfig } from '#shared/types/screenshot'
 import { mergeScreenshotConfig, buildScreenshotOptions } from '../utils/screenshotConfig'
-import { dismissCookieBanner, createStealthContext, applyStealthScripts, takeScreenshot, runConcurrently, preparePageForScreenshot, humanizeMouse, jitterDelay } from '../utils/browserUtils'
+import { dismissCookieBanner, createStealthContext, applyStealthScripts, takeScreenshot, runConcurrently, preparePageForScreenshot, humanizeMouse, jitterDelay, VARIANT_MODIFIER_WORDS } from '../utils/browserUtils'
 import { callGemini } from '../utils/geminiClient'
 import { buildSchema, buildExtractPrompt } from '../utils/extractPrompt'
 import { buildScreenshotFilename } from '../utils/filename'
@@ -189,6 +189,7 @@ export default defineEventHandler(async (event) => {
 
           // Split query into keywords for strict post-filter matching
           const queryKeywords = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+          const queryKeywordSet = new Set(queryKeywords)
 
           const collectUrlsWithTitles = async (): Promise<{ url: string; title: string }[]> => {
             const collected = new Map<string, string>() // url -> title
@@ -231,7 +232,9 @@ export default defineEventHandler(async (event) => {
           const filterByKeywords = (items: { url: string; title: string }[]): { url: string; title: string }[] => {
             const filtered = items.filter(({ url, title }) => {
               const haystack = (title + ' ' + url).toLowerCase()
-              return queryKeywords.every((kw) => haystack.includes(kw))
+              if (!queryKeywords.every((kw) => haystack.includes(kw))) return false
+              const haystackWords = haystack.split(/[^a-z0-9]+/).filter(Boolean)
+              return !haystackWords.some((w) => VARIANT_MODIFIER_WORDS.has(w) && !queryKeywordSet.has(w))
             })
             const dropped = items.length - filtered.length
             if (dropped > 0) emit('info', `Keyword filter: kept ${filtered.length}/${items.length} (dropped ${dropped} non-matching)`)
