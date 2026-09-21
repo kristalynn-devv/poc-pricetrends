@@ -69,3 +69,7 @@ Either app can be run directly: `pnpm --filter poc-pricetrends-api dev`.
 ## Status
 
 Proof of concept. Not deployed, not scheduled, not hardened.
+
+## License
+
+[MIT](./LICENSE) © 2026 Kristalyn Narongpiyawatha
